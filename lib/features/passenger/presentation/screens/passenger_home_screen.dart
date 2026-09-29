@@ -232,9 +232,10 @@ class _PassengerHomeScreenState extends ConsumerState<PassengerHomeScreen> {
               ),
               title: Row(
                 children: [
-                  GestureDetector(
-                    onTap: () => _showLocationBottomSheet(context, locationState),
-                    child: Row(
+                  Expanded(
+                    child: GestureDetector(
+                      onTap: () => _showLocationBottomSheet(context, locationState),
+                      child: Row(
                       children: [
                         Container(
                           padding: const EdgeInsets.all(10),
@@ -245,43 +246,48 @@ class _PassengerHomeScreenState extends ConsumerState<PassengerHomeScreen> {
                           child: const Icon(Icons.location_on_rounded, color: Colors.white, size: 22),
                         ),
                         const SizedBox(width: 14),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Text(
-                              'Current Location',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.white70,
-                                fontWeight: FontWeight.w600,
-                                letterSpacing: 0.5,
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Text(
-                                  locationState.isLocationEnabled 
-                                    ? (locationState.address ?? 'Locating...') 
-                                    : 'Location Disabled',
-                                  style: const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                    letterSpacing: -0.3,
-                                  ),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              const Text(
+                                'Current Location',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white70,
+                                  fontWeight: FontWeight.w600,
+                                  letterSpacing: 0.5,
                                 ),
-                                const SizedBox(width: 4),
-                                const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.white70),
-                              ],
-                            ),
-                          ],
+                              ),
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Flexible(
+                                    child: Text(
+                                      locationState.isLocationEnabled 
+                                        ? (locationState.address ?? 'Locating...') 
+                                        : 'Location Disabled',
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                        letterSpacing: -0.3,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  const Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: Colors.white70),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 12),
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
