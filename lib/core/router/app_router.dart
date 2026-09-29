@@ -8,7 +8,7 @@ import '../../features/passenger/presentation/screens/passenger_home_screen.dart
 import '../../features/passenger/presentation/screens/passenger_tracking_screen.dart';
 import '../../features/passenger/presentation/screens/passenger_routes_screen.dart';
 import '../../features/passenger/presentation/screens/passenger_notifications_screen.dart';
-import '../../features/passenger/presentation/screens/passenger_profile_screen.dart';
+
 import '../../features/passenger/presentation/screens/profile_screen.dart';
 import '../../features/passenger/presentation/screens/location_permission_screen.dart';
 import '../../features/passenger/presentation/screens/bus_details_screen.dart';

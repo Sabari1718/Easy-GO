@@ -35,6 +35,8 @@ class MockBusRepository {
     await Future.delayed(const Duration(milliseconds: 500)); // Mock network
     if (userPosition == null) return [];
 
+    const double nearbyBusRadius = 5000; // 5000 meters
+
     // Sort by distance if userPosition is provided
     final List<Map<String, dynamic>> busDistances = _mockBuses.map((bus) {
       double distance = Geolocator.distanceBetween(
@@ -42,11 +44,11 @@ class MockBusRepository {
         bus.latitude, bus.longitude,
       );
       return {'bus': bus, 'distance': distance};
-    }).toList();
+    }).where((element) => (element['distance'] as double) <= nearbyBusRadius).toList();
 
     busDistances.sort((a, b) => (a['distance'] as double).compareTo(b['distance'] as double));
 
-    return busDistances.map((e) => e['bus'] as BusModel).take(5).toList();
+    return busDistances.map((e) => e['bus'] as BusModel).toList();
   }
 
   Future<List<BusModel>> searchBuses(String query) async {

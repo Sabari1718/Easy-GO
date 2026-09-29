@@ -1,5 +1,6 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:geocoding/geocoding.dart';
+import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:geolocator/geolocator.dart';
 import 'package:equatable/equatable.dart';
 
@@ -9,6 +10,7 @@ class LocationState extends Equatable {
   final String? address;
   final bool isLoading;
   final String? error;
+  final bool isPermissionChecked;
 
   const LocationState({
     this.permissionStatus = LocationPermission.denied,
@@ -16,6 +18,7 @@ class LocationState extends Equatable {
     this.address,
     this.isLoading = false,
     this.error,
+    this.isPermissionChecked = false,
   });
 
   LocationState copyWith({
@@ -24,6 +27,7 @@ class LocationState extends Equatable {
     String? address,
     bool? isLoading,
     String? error,
+    bool? isPermissionChecked,
   }) {
     return LocationState(
       permissionStatus: permissionStatus ?? this.permissionStatus,
@@ -31,6 +35,7 @@ class LocationState extends Equatable {
       address: address ?? this.address,
       isLoading: isLoading ?? this.isLoading,
       error: error,
+      isPermissionChecked: isPermissionChecked ?? this.isPermissionChecked,
     );
   }
 
@@ -39,12 +44,17 @@ class LocationState extends Equatable {
     permissionStatus == LocationPermission.whileInUse;
 
   @override
-  List<Object?> get props => [permissionStatus, currentPosition, address, isLoading, error];
+  List<Object?> get props => [permissionStatus, currentPosition, address, isLoading, error, isPermissionChecked];
 }
 
 class LocationNotifier extends Notifier<LocationState> {
+  StreamSubscription<Position>? _positionStreamSubscription;
+
   @override
   LocationState build() {
+    ref.onDispose(() {
+      _positionStreamSubscription?.cancel();
+    });
     Future.microtask(() => checkPermissionAndFetch());
     return const LocationState();
   }
@@ -58,20 +68,24 @@ class LocationNotifier extends Notifier<LocationState> {
         state = state.copyWith(
           isLoading: false,
           error: 'Location services are disabled.',
+          isPermissionChecked: true,
         );
         return;
       }
 
       LocationPermission permission = await Geolocator.checkPermission();
-      state = state.copyWith(permissionStatus: permission);
+      state = state.copyWith(
+        permissionStatus: permission,
+        isPermissionChecked: true,
+      );
 
       if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
-        await _fetchCurrentLocation();
+        await _startLocationStream();
       } else {
         state = state.copyWith(isLoading: false);
       }
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
+      state = state.copyWith(isLoading: false, error: e.toString(), isPermissionChecked: true);
     }
   }
 
@@ -82,7 +96,7 @@ class LocationNotifier extends Notifier<LocationState> {
       state = state.copyWith(permissionStatus: permission);
 
       if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
-        await _fetchCurrentLocation();
+        await _startLocationStream();
       } else {
         state = state.copyWith(isLoading: false);
       }
@@ -91,50 +105,65 @@ class LocationNotifier extends Notifier<LocationState> {
     }
   }
 
-  Future<void> _fetchCurrentLocation() async {
+  Future<void> _startLocationStream() async {
     try {
       Position position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
       );
-      
-      String address = "Unknown Location";
-      try {
-        final geocoding = Geocoding();
-        List<Placemark> placemarks = await geocoding.placemarkFromCoordinates(
-          position.latitude,
-          position.longitude,
-        );
-        if (placemarks.isNotEmpty) {
-          final place = placemarks.first;
-          // E.g., "Gandhipuram, Coimbatore"
-          String area = place.subLocality ?? place.thoroughfare ?? place.name ?? '';
-          String city = place.locality ?? place.subAdministrativeArea ?? '';
-          
-          if (area.isNotEmpty && city.isNotEmpty) {
-            address = '$area, $city';
-          } else if (area.isNotEmpty) {
-            address = area;
-          } else if (city.isNotEmpty) {
-            address = city;
-          } else {
-            address = 'Lat: ${position.latitude.toStringAsFixed(2)}, Lng: ${position.longitude.toStringAsFixed(2)}';
-          }
-        }
-      } catch (e) {
-        print("Geocoding Error: $e");
-        // Fallback to coordinates if geocoding fails (common on emulators)
-        address = '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
-      }
+      await _updatePositionAndAddress(position);
 
-      state = state.copyWith(
-        currentPosition: position,
-        address: address,
-        isLoading: false,
+      _positionStreamSubscription?.cancel();
+      _positionStreamSubscription = Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          distanceFilter: 20,
+        ),
+      ).listen(
+        (Position newPosition) {
+          _updatePositionAndAddress(newPosition);
+        },
+        onError: (e) {
+          state = state.copyWith(error: 'Location stream error: $e');
+        }
       );
     } catch (e) {
-      print("Location Error: $e");
       state = state.copyWith(isLoading: false, error: 'Failed to get location');
     }
+  }
+
+  Future<void> _updatePositionAndAddress(Position position) async {
+    String address = state.address ?? "Unknown Location";
+    try {
+      final geocodingInstance = geocoding.Geocoding();
+      List<geocoding.Placemark> placemarks = await geocodingInstance.placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      if (placemarks.isNotEmpty) {
+        final place = placemarks.first;
+        String area = place.subLocality ?? place.thoroughfare ?? place.name ?? '';
+        String city = place.locality ?? place.subAdministrativeArea ?? '';
+        
+        if (area.isNotEmpty && city.isNotEmpty) {
+          address = '$area, $city';
+        } else if (area.isNotEmpty) {
+          address = area;
+        } else if (city.isNotEmpty) {
+          address = city;
+        } else {
+          address = 'Lat: ${position.latitude.toStringAsFixed(2)}, Lng: ${position.longitude.toStringAsFixed(2)}';
+        }
+      }
+    } catch (e) {
+      // Fallback to coordinates if geocoding fails
+      address = '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+    }
+
+    state = state.copyWith(
+      currentPosition: position,
+      address: address,
+      isLoading: false,
+    );
   }
 }
 

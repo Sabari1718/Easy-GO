@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import '../../../../core/widgets/premium_card.dart';
-import '../../../../core/providers/auth_providers.dart';
+
 import '../../../../core/providers/location_provider.dart';
 import '../../data/repositories/mock_bus_repository.dart';
 
@@ -18,6 +20,58 @@ class _PassengerHomeScreenState extends ConsumerState<PassengerHomeScreen> {
   String _searchQuery = "";
   List<BusModel> _searchResults = [];
   bool _isSearching = false;
+  bool _hasPromptedLocation = false;
+  final _storage = const FlutterSecureStorage();
+  GoogleMapController? _mapController;
+
+  @override
+  void initState() {
+    super.initState();
+    _initPromptFlag();
+  }
+
+  Future<void> _initPromptFlag() async {
+    final prompted = await _storage.read(key: 'has_prompted_location');
+    if (mounted) {
+      setState(() {
+        _hasPromptedLocation = prompted == 'true';
+      });
+    }
+  }
+
+  void _showLocationPermissionPrompt() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('Turn On Location', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: const Text('Enable your location to find buses near you and show your current location.'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+              },
+              child: const Text('Not Now', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                ref.read(locationProvider.notifier).requestPermission();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF0F172A),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Enable Location'),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   void _onSearchChanged(String query) async {
     setState(() {
@@ -131,6 +185,31 @@ class _PassengerHomeScreenState extends ConsumerState<PassengerHomeScreen> {
   @override
   Widget build(BuildContext context) {
     final locationState = ref.watch(locationProvider);
+
+    ref.listen<LocationState>(locationProvider, (previous, next) async {
+      if (next.currentPosition != null && _mapController != null) {
+        if (previous?.currentPosition == null) {
+          _mapController!.animateCamera(CameraUpdate.newCameraPosition(
+            CameraPosition(
+              target: LatLng(next.currentPosition!.latitude, next.currentPosition!.longitude),
+              zoom: 15.0,
+            ),
+          ));
+        } else {
+           // Smooth update if map is already active
+        }
+      }
+
+      if (next.isPermissionChecked && !next.isLocationEnabled) {
+        if (!_hasPromptedLocation && next.permissionStatus != LocationPermission.deniedForever) {
+          _hasPromptedLocation = true;
+          await _storage.write(key: 'has_prompted_location', value: 'true');
+          if (mounted) {
+            _showLocationPermissionPrompt();
+          }
+        }
+      }
+    });
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -350,6 +429,39 @@ class _PassengerHomeScreenState extends ConsumerState<PassengerHomeScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        if (locationState.isLocationEnabled && locationState.currentPosition != null)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 24.0),
+            child: PremiumCard(
+              padding: EdgeInsets.zero,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: SizedBox(
+                  height: 220,
+                  width: double.infinity,
+                  child: GoogleMap(
+                    initialCameraPosition: CameraPosition(
+                      target: LatLng(locationState.currentPosition!.latitude, locationState.currentPosition!.longitude),
+                      zoom: 15.0,
+                    ),
+                    onMapCreated: (controller) => _mapController = controller,
+                    markers: {
+                      Marker(
+                        markerId: const MarkerId('user_location'),
+                        position: LatLng(locationState.currentPosition!.latitude, locationState.currentPosition!.longitude),
+                        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+                        infoWindow: const InfoWindow(title: 'Your Location'),
+                      ),
+                    },
+                    myLocationEnabled: false,
+                    myLocationButtonEnabled: false,
+                    zoomControlsEnabled: false,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          
         // Nearby Buses Section
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -391,23 +503,32 @@ class _PassengerHomeScreenState extends ConsumerState<PassengerHomeScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Enable location to discover buses near you.',
+                const SizedBox(height: 8),
+                Text(
+                  locationState.permissionStatus == LocationPermission.deniedForever
+                      ? 'Location permission is disabled.'
+                      : 'Enable location to discover buses near you.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
                     color: Color(0xFF64748B),
                   ),
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: () => ref.read(locationProvider.notifier).requestPermission(),
+                  onPressed: () {
+                    if (locationState.permissionStatus == LocationPermission.deniedForever) {
+                      Geolocator.openAppSettings();
+                    } else {
+                      ref.read(locationProvider.notifier).requestPermission();
+                    }
+                  },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0F172A),
                     foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
-                  child: const Text('Enable Location'),
+                  child: Text(locationState.permissionStatus == LocationPermission.deniedForever ? 'Open Settings' : 'Enable Location'),
                 ),
               ],
             ),
@@ -427,7 +548,20 @@ class _PassengerHomeScreenState extends ConsumerState<PassengerHomeScreen> {
                 return const Center(child: CircularProgressIndicator(color: Color(0xFF0F172A)));
               }
               if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                return const Text('No buses found nearby', style: TextStyle(color: Color(0xFF64748B)));
+                return const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 32.0),
+                    child: Column(
+                      children: [
+                        Text('🚌', style: TextStyle(fontSize: 48)),
+                        SizedBox(height: 16),
+                        Text('No buses nearby', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF0F172A))),
+                        SizedBox(height: 8),
+                        Text('Try searching for a route or bus stop.', style: TextStyle(color: Color(0xFF64748B))),
+                      ],
+                    ),
+                  ),
+                );
               }
               return Column(
                 children: snapshot.data!.map((bus) => Padding(
