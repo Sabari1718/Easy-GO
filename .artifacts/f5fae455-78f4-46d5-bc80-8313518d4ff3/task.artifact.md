@@ -1,0 +1,5 @@
+- [x] Inspect existing EasyGo codebase and working architecture
+- [x] Create centralized EasyGo design system and reusable UI components (`EasyGoButton`, `EasyGoCard`, `EasyGoLiveBadge`, `EasyGoSectionHeader`, `EasyGoMapButton`, `EasyGoEmptyState`, `EasyGoStatusChip`)
+- [x] Redesign and polish Home Screen, Search Screen, Live Tracking, Bus Stop Details, and Routes UI/UX
+- [x] Ensure seamless integration with existing location, repositories, services, Riverpod, and GoRouter without breaking business logic
+- [x] Verify project compilation and static analysis with `flutter analyze` (Zero issues found)

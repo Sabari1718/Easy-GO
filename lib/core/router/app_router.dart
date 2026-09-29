@@ -8,11 +8,15 @@ import '../../features/passenger/presentation/screens/passenger_home_screen.dart
 import '../../features/passenger/presentation/screens/passenger_tracking_screen.dart';
 import '../../features/passenger/presentation/screens/passenger_routes_screen.dart';
 import '../../features/passenger/presentation/screens/passenger_notifications_screen.dart';
-
 import '../../features/passenger/presentation/screens/profile_screen.dart';
 import '../../features/passenger/presentation/screens/location_permission_screen.dart';
 import '../../features/passenger/presentation/screens/bus_details_screen.dart';
 import '../../features/passenger/presentation/screens/route_details_screen.dart';
+import '../../features/passenger/presentation/screens/live_tracking_screen.dart';
+import '../../features/passenger/presentation/screens/bus_stop_details_screen.dart';
+import '../../features/passenger/presentation/screens/trip_planner_screen.dart';
+import '../../features/passenger/presentation/screens/saved_screen.dart';
+import '../../features/passenger/presentation/screens/passenger_search_screen.dart';
 import '../../features/passenger/presentation/widgets/passenger_bottom_nav.dart';
 import '../../features/driver/presentation/screens/driver_dashboard_screen.dart';
 import '../../features/driver/presentation/screens/driver_current_trip_screen.dart';
@@ -21,9 +25,12 @@ import '../../features/driver/presentation/screens/driver_status_screen.dart';
 import '../../features/driver/presentation/screens/driver_profile_screen.dart';
 import '../../features/driver/presentation/widgets/driver_bottom_nav.dart';
 
-final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
-final GlobalKey<NavigatorState> _passengerShellNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'passengerShell');
-final GlobalKey<NavigatorState> _driverShellNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'driverShell');
+final GlobalKey<NavigatorState> _rootNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'root');
+final GlobalKey<NavigatorState> _passengerShellNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'passengerShell');
+final GlobalKey<NavigatorState> _driverShellNavigatorKey =
+    GlobalKey<NavigatorState>(debugLabel: 'driverShell');
 
 final goRouter = GoRouter(
   navigatorKey: _rootNavigatorKey,
@@ -52,8 +59,8 @@ final goRouter = GoRouter(
       path: '/location-permission',
       builder: (context, state) => const LocationPermissionScreen(),
     ),
-    
-    // Passenger Routes with ShellRoute for BottomNav
+
+    // ── Passenger Shell (with BottomNav) ───────────────────────────────────
     ShellRoute(
       navigatorKey: _passengerShellNavigatorKey,
       builder: (context, state, child) => PassengerBottomNav(child: child),
@@ -80,20 +87,49 @@ final goRouter = GoRouter(
         ),
       ],
     ),
-    
-    // Passenger Sub-routes (No BottomNav)
+
+    // ── Passenger Sub-routes (No BottomNav) ────────────────────────────────
     GoRoute(
       path: '/passenger/bus/:id',
       parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => BusDetailsScreen(busId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          BusDetailsScreen(busId: state.pathParameters['id']!),
     ),
     GoRoute(
       path: '/passenger/route/:id',
       parentNavigatorKey: _rootNavigatorKey,
-      builder: (context, state) => RouteDetailsScreen(routeId: state.pathParameters['id']!),
+      builder: (context, state) =>
+          RouteDetailsScreen(routeId: state.pathParameters['id']!),
+    ),
+    GoRoute(
+      path: '/passenger/live-tracking/:busId',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) =>
+          LiveTrackingScreen(busId: state.pathParameters['busId']!),
+    ),
+    GoRoute(
+      path: '/passenger/stop/:stopName',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) =>
+          BusStopDetailsScreen(stopName: state.pathParameters['stopName']!),
+    ),
+    GoRoute(
+      path: '/passenger/plan-trip',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const TripPlannerScreen(),
+    ),
+    GoRoute(
+      path: '/passenger/saved',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const SavedScreen(),
+    ),
+    GoRoute(
+      path: '/passenger/search',
+      parentNavigatorKey: _rootNavigatorKey,
+      builder: (context, state) => const PassengerSearchScreen(),
     ),
 
-    // Driver Routes with ShellRoute for BottomNav
+    // ── Driver Shell (with BottomNav) ──────────────────────────────────────
     ShellRoute(
       navigatorKey: _driverShellNavigatorKey,
       builder: (context, state, child) => DriverBottomNav(child: child),
