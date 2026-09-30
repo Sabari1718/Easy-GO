@@ -127,7 +127,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
       extendBodyBehindAppBar: true,
-      appBar: _buildAppBar(isFav, busStateAsync.value?.speedMultiplier ?? 1.0),
+      appBar: _buildAppBar(isFav, busStateAsync.value),
       body: busStateAsync.when(
         data: (busState) {
           final busPos = LatLng(busState.latitude, busState.longitude);
@@ -154,12 +154,13 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
               // 1. Google Map
               _buildMap(busState, currentPos, locationState, repo),
 
-              // 2. Top Live Status Header & Selected Stop Banner
+              // 2. Top Live Status Header & "Is My Bus Coming?" Banner
               SafeArea(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _buildTopStatusBar(busState),
+                    _buildIsMyBusComingBanner(busState),
                     if (busState.selectedStopId != null)
                       _buildPassengerSelectedStopBanner(busState, repo),
                   ],
@@ -174,7 +175,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
 
               // 5. Journey Completed Overlay
               if (busState.status == BusJourneyStatus.serviceEnded)
-                _buildJourneyCompletedOverlay(repo),
+                _buildJourneyCompletedOverlay(busState, repo),
 
               // 6. Sliding Bottom Details Panel
               if (_showDetailsPanel &&
@@ -210,23 +211,33 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
   }
 
   // ─── AppBar ─────────────────────────────────────────────────────────────────
-  PreferredSizeWidget _buildAppBar(bool isFav, double speedMultiplier) {
+  PreferredSizeWidget _buildAppBar(bool isFav, BusLiveState? busState) {
+    final speedMultiplier = busState?.speedMultiplier ?? 1.0;
+    final busNum = busState?.busNumber.isNotEmpty == true ? busState!.busNumber : '12A';
+    final routeText = busState?.routeName.isNotEmpty == true ? busState!.routeName : 'Live Bus Tracking';
+
     return AppBar(
       backgroundColor: const Color(0xFF0F172A).withAlpha(220),
       elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.arrow_back_ios_new_rounded,
             color: Colors.white, size: 20),
-        onPressed: () => context.go('/passenger/tracking'),
+        onPressed: () {
+          if (context.canPop()) {
+            context.pop();
+          } else {
+            context.go('/passenger/home');
+          }
+        },
       ),
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              const Text(
-                'Bus 12A',
-                style: TextStyle(
+              Text(
+                'Bus $busNum',
+                style: const TextStyle(
                     color: Colors.white,
                     fontWeight: FontWeight.w900,
                     fontSize: 18),
@@ -236,12 +247,12 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                 padding:
                     const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 decoration: BoxDecoration(
-                  color: const Color(0xFF22C55E),
+                  color: busState?.statusBadgeColor ?? const Color(0xFF22C55E),
                   borderRadius: BorderRadius.circular(6),
                 ),
-                child: const Text(
-                  'LIVE',
-                  style: TextStyle(
+                child: Text(
+                  busState?.locationStatus ?? 'LIVE',
+                  style: const TextStyle(
                       color: Colors.white,
                       fontSize: 10,
                       fontWeight: FontWeight.bold),
@@ -249,9 +260,24 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
               ),
             ],
           ),
-          const Text(
-            'Ukkadam → Pollachi',
-            style: TextStyle(color: Colors.white70, fontSize: 12),
+          Row(
+            children: [
+              Text(
+                routeText,
+                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              if (busState != null) ...[
+                const SizedBox(width: 6),
+                Text(
+                  '• ${busState.freshnessLabel}',
+                  style: TextStyle(
+                    color: busState.statusBadgeColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ],
           ),
         ],
       ),
@@ -362,7 +388,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
         anchor: const Offset(0.5, 0.5),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
         infoWindow: InfoWindow(
-          title: '🚌 Bus 12A (${busState.status.label})',
+          title: '🚌 Bus ${busState.busNumber} (${busState.status.label})',
           snippet: busState.status == BusJourneyStatus.stoppedAtStop
               ? 'Stopped at ${busState.currentStopName} • 0 km/h'
               : 'Speed: ${busState.speed.toStringAsFixed(0)} km/h • Next: ${busState.nextStopName}',
@@ -513,6 +539,23 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                         letterSpacing: 0.5,
                       ),
                     ),
+                    Container(
+                      margin: const EdgeInsets.only(left: 6),
+                      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                      decoration: BoxDecoration(
+                        color: state.statusBadgeColor.withAlpha(40),
+                        borderRadius: BorderRadius.circular(4),
+                        border: Border.all(color: state.statusBadgeColor.withAlpha(150), width: 1),
+                      ),
+                      child: Text(
+                        state.locationStatus,
+                        style: TextStyle(
+                          color: state.statusBadgeColor,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 9,
+                        ),
+                      ),
+                    ),
                     if (state.status == BusJourneyStatus.stoppedAtStop &&
                         state.dwellTimeRemainingSeconds > 0) ...[
                       const SizedBox(width: 8),
@@ -554,6 +597,112 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                 fontWeight: FontWeight.w900,
                 fontSize: 13,
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ─── "Is My Bus Coming?" Live Banner (Requirement 18) ──────────────────────
+  Widget _buildIsMyBusComingBanner(BusLiveState state) {
+    final boardingStop = state.selectedStopName ??
+        (state.status == BusJourneyStatus.approachingStop
+            ? state.nextStopName
+            : state.currentStopName);
+    final distanceKm =
+        state.distanceToSelectedStop ?? state.distanceToNextStop;
+    final etaMin = state.etaToSelectedStop ?? state.etaMinutes;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF064E3B), Color(0xFF047857)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFF34D399), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withAlpha(50),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          )
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(30),
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Text('🟢', style: TextStyle(fontSize: 16)),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Your bus is coming',
+                      style: TextStyle(
+                        color: Color(0xFF6EE7B7),
+                        fontWeight: FontWeight.w900,
+                        fontSize: 12,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(35),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        state.busNumber,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  'Current: ${state.currentStopName} • Boarding: $boardingStop',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Distance: ${distanceKm.toStringAsFixed(1)} km • ETA: $etaMin min',
+                  style: const TextStyle(
+                    color: Color(0xFFD1FAE5),
+                    fontSize: 11,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -861,7 +1010,8 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
   }
 
   // ─── Journey Completed Overlay ──────────────────────────────────────────────
-  Widget _buildJourneyCompletedOverlay(LiveBusTrackingRepository repo) {
+  Widget _buildJourneyCompletedOverlay(
+      BusLiveState state, LiveBusTrackingRepository repo) {
     return Positioned(
       bottom: 0,
       left: 0,
@@ -894,10 +1044,10 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
               ),
             ),
             const SizedBox(height: 6),
-            const Text(
-              'Bus 12A has arrived at Pollachi Central Bus Stand.',
+            Text(
+              'Bus ${state.busNumber} has arrived at destination (${state.currentStopName}).',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+              style: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
             ),
             const SizedBox(height: 20),
             Row(
@@ -920,7 +1070,13 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton(
-                    onPressed: () => context.go('/passenger/tracking'),
+                    onPressed: () {
+                      if (context.canPop()) {
+                        context.pop();
+                      } else {
+                        context.go('/passenger/home');
+                      }
+                    },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF0F172A),
                       foregroundColor: Colors.white,
@@ -928,7 +1084,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14)),
                     ),
-                    child: const Text('Back to Live Buses',
+                    child: const Text('Back to Home',
                         style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
@@ -991,14 +1147,14 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                       ),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Column(
+                    child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.directions_bus,
+                        const Icon(Icons.directions_bus,
                             color: Colors.white, size: 16),
                         Text(
-                          '12A',
-                          style: TextStyle(
+                          state.busNumber,
+                          style: const TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.w900,
                               fontSize: 12),
@@ -1011,9 +1167,9 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Ukkadam → Pollachi',
-                          style: TextStyle(
+                        Text(
+                          state.routeName,
+                          style: const TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.w800,
                             color: Color(0xFF0F172A),

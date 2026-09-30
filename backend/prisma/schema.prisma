@@ -1,0 +1,220 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum BusStatus {
+  ACTIVE
+  INACTIVE
+  MAINTENANCE
+  COMPLETED
+}
+
+enum TripStatus {
+  NOT_STARTED
+  RUNNING
+  COMPLETED
+  CANCELLED
+}
+
+enum TrackerStatus {
+  ACTIVE
+  INACTIVE
+  LOST
+}
+
+enum AlertType {
+  ROUTE_ALERT
+  BUS_ALERT
+  STOP_ALERT
+  GENERAL
+}
+
+enum FavoriteType {
+  BUS
+  ROUTE
+  STOP
+}
+
+model User {
+  id            String     @id @default(uuid())
+  mobileNumber  String     @unique
+  name          String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  favorites     Favorite[]
+  otpRecords    OtpRecord[]
+
+  @@map("users")
+}
+
+model OtpRecord {
+  id          String   @id @default(uuid())
+  userId      String
+  otp         String
+  expiresAt   DateTime
+  verified    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("otp_records")
+}
+
+model Route {
+  id                        String      @id @default(uuid())
+  name                      String
+  source                    String
+  destination               String
+  distanceKm                Float
+  estimatedDurationMinutes  Int
+  routeGeometry             Json        // Array of {lat, lng} coordinates following roads
+  createdAt                 DateTime    @default(now())
+  updatedAt                 DateTime    @updatedAt
+  stops                     RouteStop[]
+  buses                     Bus[]
+  trips                     Trip[]
+
+  @@map("routes")
+}
+
+model BusStop {
+  id          String      @id @default(uuid())
+  name        String
+  latitude    Float
+  longitude   Float
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  routes      RouteStop[]
+
+  @@map("bus_stops")
+}
+
+model RouteStop {
+  id                              String    @id @default(uuid())
+  routeId                         String
+  stopId                          String
+  sequence                        Int
+  distanceFromStartKm             Float
+  estimatedMinutesFromPreviousStop Int
+  route                           Route     @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  stop                            BusStop   @relation(fields: [stopId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, sequence])
+  @@unique([routeId, stopId])
+  @@index([routeId])
+  @@index([stopId])
+  @@map("route_stops")
+}
+
+model BusTracker {
+  id           String        @id @default(uuid())
+  deviceId     String        @unique // Physical device IMEI or hardware ID
+  trackerId    String?       @unique // Logical Tracker ID e.g. TRK001
+  deviceSecret String?               // Hardware API key / secret
+  deviceType   String?       @default("4G_GPS_TRACKER")
+  busId        String?       @unique
+  simNumber    String?
+  provider     String?
+  status       TrackerStatus @default(ACTIVE)
+  isActive     Boolean       @default(true)
+  lastSeenAt   DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  bus          Bus?          @relation(fields: [busId], references: [id])
+
+  @@map("bus_trackers")
+}
+
+model Bus {
+  id            String        @id @default(uuid())
+  busNumber     String        @unique
+  vehicleNumber String?
+  routeId       String
+  status        BusStatus     @default(ACTIVE)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  route         Route         @relation(fields: [routeId], references: [id])
+  tracker       BusTracker?
+  trips         Trip[]
+  locations     BusLocation[]
+
+  @@index([routeId])
+  @@map("buses")
+}
+
+model Trip {
+  id          String      @id @default(uuid())
+  busId       String
+  routeId     String
+  startedAt   DateTime?
+  completedAt DateTime?
+  status      TripStatus  @default(NOT_STARTED)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  bus         Bus         @relation(fields: [busId], references: [id])
+  route       Route       @relation(fields: [routeId], references: [id])
+  locations   BusLocation[]
+
+  @@index([busId])
+  @@index([routeId])
+  @@index([status])
+  @@map("trips")
+}
+
+model BusLocation {
+  id        String   @id @default(uuid())
+  busId     String
+  tripId    String?
+  latitude  Float
+  longitude Float
+  speed     Float    @default(0)
+  heading   Float    @default(0)
+  accuracy  Float    @default(10)
+  timestamp DateTime
+  createdAt DateTime @default(now())
+  bus       Bus      @relation(fields: [busId], references: [id])
+  trip      Trip?    @relation(fields: [tripId], references: [id])
+
+  @@index([busId])
+  @@index([tripId])
+  @@index([timestamp])
+  @@map("bus_locations")
+}
+
+model Favorite {
+  id           String       @id @default(uuid())
+  userId       String
+  type         FavoriteType
+  referenceId  String       // busId, routeId, or stopId
+  referenceName String
+  createdAt    DateTime     @default(now())
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type, referenceId])
+  @@index([userId])
+  @@map("favorites")
+}
+
+model Alert {
+  id        String    @id @default(uuid())
+  title     String
+  message   String
+  type      AlertType @default(GENERAL)
+  routeId   String?
+  busId     String?
+  stopId    String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  @@index([type])
+  @@index([routeId])
+  @@index([busId])
+  @@map("alerts")
+}

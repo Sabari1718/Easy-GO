@@ -419,11 +419,14 @@ class MockLiveBusTrackingRepository implements LiveBusTrackingRepository {
       }
     }
 
+    final busNumber = _getBusNumber(busId);
+    final routeInfo = _getRouteInfo(busId);
+
     return BusLiveState(
       busId: busId,
-      busNumber: '12A',
-      routeId: 'r12a_ukkadam_pollachi',
-      routeName: 'Ukkadam → Pollachi',
+      busNumber: busNumber,
+      routeId: routeInfo['routeId']!,
+      routeName: routeInfo['routeName']!,
       latitude: currentLat,
       longitude: currentLng,
       speed: speedKmh,
@@ -453,6 +456,25 @@ class MockLiveBusTrackingRepository implements LiveBusTrackingRepository {
       currentRoutePointIndex: idx,
       dwellTimeRemainingSeconds: _dwellRemainingSeconds,
     );
+  }
+
+  String _getBusNumber(String busId) {
+    final lower = busId.toLowerCase();
+    if (lower.contains('12a')) return '12A';
+    if (lower.contains('24')) return '24';
+    if (lower.contains('5b')) return '5B';
+    return busId.replaceAll('bus_', '').replaceAll('_', ' ').toUpperCase();
+  }
+
+  Map<String, String> _getRouteInfo(String busId) {
+    final lower = busId.toLowerCase();
+    if (lower.contains('24')) {
+      return {'routeId': 'r24', 'routeName': 'Gandhipuram → Singanallur'};
+    }
+    if (lower.contains('5b')) {
+      return {'routeId': 'r5b', 'routeName': 'Gandhipuram → Ukkadam'};
+    }
+    return {'routeId': 'r12a_ukkadam_pollachi', 'routeName': 'Gandhipuram → Pollachi'};
   }
 
   double _getDistanceBetweenProgress(double pStart, double pEnd) {

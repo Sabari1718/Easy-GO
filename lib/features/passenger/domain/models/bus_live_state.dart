@@ -79,6 +79,9 @@ class BusLiveState {
   final BusJourneyStatus status;
   final String statusMessage;
   final DateTime lastUpdated;
+  final String locationStatus; // LIVE, RECENT, STALE, OFFLINE
+  final int secondsSinceUpdate;
+  final bool trackerOnline;
   final String? selectedStopId;
   final String? selectedStopName;
   final double? distanceToSelectedStop;
@@ -113,6 +116,9 @@ class BusLiveState {
     required this.status,
     required this.statusMessage,
     required this.lastUpdated,
+    this.locationStatus = 'LIVE',
+    this.secondsSinceUpdate = 0,
+    this.trackerOnline = true,
     this.selectedStopId,
     this.selectedStopName,
     this.distanceToSelectedStop,
@@ -123,6 +129,32 @@ class BusLiveState {
     this.currentRoutePointIndex = 0,
     this.dwellTimeRemainingSeconds = 0,
   });
+
+  bool get isLiveLocation => locationStatus == 'LIVE' && secondsSinceUpdate <= 15;
+  bool get isRecentLocation => locationStatus == 'RECENT' || (secondsSinceUpdate > 15 && secondsSinceUpdate <= 60);
+  bool get isStaleLocation => locationStatus == 'STALE' || (secondsSinceUpdate > 60 && secondsSinceUpdate <= 300);
+  bool get isOfflineLocation => locationStatus == 'OFFLINE' || secondsSinceUpdate > 300;
+
+  String get freshnessLabel {
+    if (isLiveLocation) {
+      return 'LIVE • Updated ${secondsSinceUpdate <= 1 ? "just now" : "$secondsSinceUpdate sec ago"}';
+    }
+    if (isRecentLocation) {
+      return 'RECENT • Updated $secondsSinceUpdate sec ago';
+    }
+    if (isStaleLocation) {
+      final mins = (secondsSinceUpdate / 60).round();
+      return 'STALE • Updated ${mins <= 1 ? "1 min" : "$mins min"} ago';
+    }
+    return 'LOCATION UNAVAILABLE';
+  }
+
+  Color get statusBadgeColor {
+    if (isLiveLocation) return const Color(0xFF22C55E);
+    if (isRecentLocation) return const Color(0xFFEAB308);
+    if (isStaleLocation) return const Color(0xFFF97316);
+    return const Color(0xFF64748B);
+  }
 
   BusLiveState copyWith({
     String? busId,
@@ -194,6 +226,78 @@ class BusLiveState {
           currentRoutePointIndex ?? this.currentRoutePointIndex,
       dwellTimeRemainingSeconds:
           dwellTimeRemainingSeconds ?? this.dwellTimeRemainingSeconds,
+    );
+  }
+
+  factory BusLiveState.fromJson(Map<String, dynamic> json) {
+    final statusStr = (json['status'] as String? ?? 'MOVING').toUpperCase();
+    BusJourneyStatus busStatus;
+    if (statusStr.contains('STOPPED')) {
+      busStatus = BusJourneyStatus.stoppedAtStop;
+    } else if (statusStr.contains('APPROACH')) {
+      busStatus = BusJourneyStatus.approachingStop;
+    } else if (statusStr.contains('COMPLETE')) {
+      busStatus = BusJourneyStatus.serviceEnded;
+    } else if (statusStr.contains('NOT_STARTED')) {
+      busStatus = BusJourneyStatus.notStarted;
+    } else {
+      busStatus = BusJourneyStatus.moving;
+    }
+
+    final curStop = json['currentStop'] as String? ??
+        json['currentStopName'] as String? ??
+        'Current Stop';
+    final nxtStop = json['nextStop'] as String? ??
+        json['nextStopName'] as String? ??
+        'Next Stop';
+
+    return BusLiveState(
+      busId: json['busId'] as String? ?? '',
+      busNumber: json['busNumber'] as String? ?? '12A',
+      routeId: json['routeId'] as String? ?? '',
+      routeName: json['routeName'] as String? ??
+          (json['route'] is Map ? (json['route']['name'] as String? ?? '') : ''),
+      latitude: (json['latitude'] as num?)?.toDouble() ?? 10.9601,
+      longitude: (json['longitude'] as num?)?.toDouble() ?? 76.9502,
+      speed: (json['speed'] as num?)?.toDouble() ?? 0.0,
+      heading: (json['heading'] as num?)?.toDouble() ?? 0.0,
+      currentStopId: json['currentStopId'] as String? ?? '',
+      currentStopName: curStop,
+      currentStopIndex: (json['currentStopIndex'] as num?)?.toInt() ?? 0,
+      nextStopId: json['nextStopId'] as String? ?? '',
+      nextStopName: nxtStop,
+      nextStopIndex: (json['nextStopIndex'] as num?)?.toInt() ?? 1,
+      distanceToNextStop: (json['distanceToNextStop'] as num?)?.toDouble() ?? 0.0,
+      distanceTravelled: (json['distanceTravelled'] as num?)?.toDouble() ??
+          (json['distanceTravelledKm'] as num?)?.toDouble() ?? 0.0,
+      distanceRemaining: (json['distanceRemaining'] as num?)?.toDouble() ??
+          (json['distanceRemainingKm'] as num?)?.toDouble() ?? 0.0,
+      totalRouteDistance: (json['totalRouteDistance'] as num?)?.toDouble() ??
+          (json['totalRouteDistanceKm'] as num?)?.toDouble() ?? 42.5,
+      etaMinutes: (json['etaMinutes'] as num?)?.toInt() ?? 8,
+      progressPercentage: (json['progressPercentage'] as num?)?.toDouble() ?? 0.0,
+      status: busStatus,
+      statusMessage: busStatus == BusJourneyStatus.stoppedAtStop
+          ? 'Bus stopped at $curStop'
+          : (busStatus == BusJourneyStatus.approachingStop
+              ? 'Approaching $nxtStop'
+              : 'Left $curStop • Moving to $nxtStop'),
+      lastUpdated: json['timestamp'] != null
+          ? (DateTime.tryParse(json['timestamp'] as String) ?? DateTime.now())
+          : (json['lastUpdated'] != null
+              ? (DateTime.tryParse(json['lastUpdated'] as String) ?? DateTime.now())
+              : (json['lastUpdatedAt'] != null
+                  ? (DateTime.tryParse(json['lastUpdatedAt'] as String) ?? DateTime.now())
+                  : DateTime.now())),
+      locationStatus: (json['locationStatus'] as String?)?.toUpperCase() ??
+          (((json['secondsSinceUpdate'] as num?)?.toInt() ?? 0) <= 15
+              ? 'LIVE'
+              : (((json['secondsSinceUpdate'] as num?)?.toInt() ?? 0) <= 60
+                  ? 'RECENT'
+                  : (((json['secondsSinceUpdate'] as num?)?.toInt() ?? 0) <= 300 ? 'STALE' : 'OFFLINE'))),
+      secondsSinceUpdate: (json['secondsSinceUpdate'] as num?)?.toInt() ?? 0,
+      trackerOnline: json['trackerOnline'] as bool? ?? true,
+      currentRoutePointIndex: (json['currentRoutePointIndex'] as num?)?.toInt() ?? 0,
     );
   }
 }

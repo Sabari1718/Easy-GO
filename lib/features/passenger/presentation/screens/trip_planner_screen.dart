@@ -2,57 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../../core/providers/location_provider.dart';
+import '../../../../core/providers/discovery_providers.dart';
+import '../../domain/models/journey_model.dart';
+
 class TripPlannerScreen extends ConsumerStatefulWidget {
   const TripPlannerScreen({super.key});
 
   @override
-  ConsumerState<TripPlannerScreen> createState() =>
-      _TripPlannerScreenState();
+  ConsumerState<TripPlannerScreen> createState() => _TripPlannerScreenState();
 }
 
 class _TripPlannerScreenState extends ConsumerState<TripPlannerScreen> {
   final _fromController = TextEditingController(text: 'Current Location');
-  final _toController = TextEditingController();
-  bool _showResults = false;
+  final _toController = TextEditingController(text: 'Pollachi');
 
-  static final _tripOptions = [
-    {
-      'busId': 'bus_12a',
-      'number': '12A',
-      'type': 'Direct',
-      'transfers': 0,
-      'duration': '25 min',
-      'walking': '3 min walk',
-      'arrival': '7:45 PM',
-      'status': 'On Time',
-      'route': 'Gandhipuram → Town Hall → Ukkadam',
-      'statusColor': const Color(0xFF22C55E),
-    },
-    {
-      'busId': 'bus_24',
-      'number': '24',
-      'type': '1 transfer',
-      'transfers': 1,
-      'duration': '32 min',
-      'walking': '5 min walk',
-      'arrival': '7:52 PM',
-      'status': 'Delayed',
-      'route': 'Gandhipuram → Singanallur → Ukkadam',
-      'statusColor': const Color(0xFFF59E0B),
-    },
-    {
-      'busId': 'bus_5b',
-      'number': '5B',
-      'type': 'Slower',
-      'transfers': 0,
-      'duration': '40 min',
-      'walking': '2 min walk',
-      'arrival': '8:00 PM',
-      'status': 'On Time',
-      'route': 'RS Puram → Peelamedu → Ukkadam',
-      'statusColor': const Color(0xFF22C55E),
-    },
-  ];
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _executeTripSearch();
+    });
+  }
 
   @override
   void dispose() {
@@ -61,231 +32,277 @@ class _TripPlannerScreenState extends ConsumerState<TripPlannerScreen> {
     super.dispose();
   }
 
+  void _executeTripSearch() {
+    final from = _fromController.text.trim();
+    final to = _toController.text.trim();
+    if (to.isEmpty) return;
+
+    ref.read(journeySearchProvider.notifier).search(
+          from: from.isEmpty ? 'Current Location' : from,
+          to: to,
+        );
+  }
+
+  void _swapFromTo() {
+    final from = _fromController.text;
+    final to = _toController.text;
+    setState(() {
+      _fromController.text = to.isEmpty ? 'Current Location' : to;
+      _toController.text = from == 'Current Location' ? 'Pollachi' : from;
+    });
+    _executeTripSearch();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final searchState = ref.watch(journeySearchProvider);
+    final locationState = ref.watch(locationProvider);
+
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFF0F172A),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              color: Colors.white, size: 20),
+          onPressed: () => context.pop(),
+        ),
+        title: const Text(
+          'Trip Planner',
+          style: TextStyle(
+              color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+        ),
+        centerTitle: true,
+      ),
       body: SafeArea(
-        child: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            SliverAppBar(
-              backgroundColor: const Color(0xFF0F172A),
-              pinned: true,
-              automaticallyImplyLeading: false,
-              leading: IconButton(
-                icon: const Icon(Icons.arrow_back_ios_new_rounded,
-                    color: Colors.white),
-                onPressed: () => context.go('/passenger/home'),
-              ),
-              expandedHeight: 80,
-              shape: const RoundedRectangleBorder(
+        child: Column(
+          children: [
+            // ── Input Card (From → To) ───────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Color(0xFF0F172A),
                 borderRadius:
-                    BorderRadius.vertical(bottom: Radius.circular(24)),
+                    BorderRadius.vertical(bottom: Radius.circular(28)),
               ),
-              flexibleSpace: const FlexibleSpaceBar(
-                background: Padding(
-                  padding: EdgeInsets.fromLTRB(64, 0, 24, 16),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Plan Your Trip',
-                          style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800)),
-                    ],
+              child: Column(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Column(
+                      children: [
+                        // FROM Field
+                        Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFDCFCE7),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.my_location_rounded,
+                                  color: Color(0xFF16A34A), size: 18),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _fromController,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Color(0xFF0F172A),
+                                ),
+                                decoration: const InputDecoration(
+                                  border: InputBorder.none,
+                                  labelText: 'FROM',
+                                  labelStyle: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF94A3B8),
+                                  ),
+                                  isDense: true,
+                                ),
+                              ),
+                            ),
+                            if (_fromController.text != 'Current Location')
+                              IconButton(
+                                icon: const Icon(Icons.gps_fixed_rounded,
+                                    color: Color(0xFF6366F1), size: 18),
+                                tooltip: 'Use Current Location',
+                                onPressed: () {
+                                  setState(() {
+                                    _fromController.text = 'Current Location';
+                                  });
+                                  _executeTripSearch();
+                                },
+                              ),
+                          ],
+                        ),
+
+                        // Swap Divider
+                        Row(
+                          children: [
+                            const SizedBox(width: 16),
+                            Container(
+                              width: 2,
+                              height: 20,
+                              color: const Color(0xFFE2E8F0),
+                            ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: _swapFromTo,
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFF1F5F9),
+                                  shape: BoxShape.circle,
+                                  border:
+                                      Border.all(color: const Color(0xFFCBD5E1)),
+                                ),
+                                child: const Icon(Icons.swap_vert_rounded,
+                                    color: Color(0xFF0F172A), size: 18),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                          ],
+                        ),
+
+                        // TO Field
+                        Row(
+                          children: [
+                            Container(
+                              width: 32,
+                              height: 32,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFFEE2E2),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Icon(Icons.location_on_rounded,
+                                  color: Color(0xFFDC2626), size: 18),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _toController,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 15,
+                                  color: Color(0xFF0F172A),
+                                ),
+                                decoration: const InputDecoration(
+                                  border: InputBorder.none,
+                                  labelText: 'TO',
+                                  labelStyle: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF94A3B8),
+                                  ),
+                                  hintText: 'Enter destination...',
+                                  isDense: true,
+                                ),
+                                onSubmitted: (_) => _executeTripSearch(),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+
+                  const SizedBox(height: 14),
+
+                  // Search Button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton.icon(
+                      onPressed: _executeTripSearch,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF6366F1),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                      icon: const Icon(Icons.directions_bus_rounded, size: 18),
+                      label: const Text(
+                        'Search Buses',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // From / To card
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.black.withAlpha(5),
-                              blurRadius: 12,
-                              offset: const Offset(0, 4))
-                        ],
+
+            // ── Quick Destination Chips ──────────────────────────────────────
+            Container(
+              height: 46,
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                children: [
+                  'Pollachi',
+                  'Coimbatore',
+                  'Ukkadam',
+                  'Gandhipuram',
+                  'Kinathukadavu',
+                  'Singanallur',
+                ].map((dest) {
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: ActionChip(
+                      label: Text(dest),
+                      labelStyle: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF334155)),
+                      backgroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        side: const BorderSide(color: Color(0xFFE2E8F0)),
                       ),
-                      child: Column(
-                        children: [
-                          // From
-                          Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFF22C55E)
-                                      .withAlpha(20),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.my_location_rounded,
-                                    color: Color(0xFF22C55E), size: 18),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: TextField(
-                                  controller: _fromController,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF0F172A),
-                                      fontSize: 15),
-                                  decoration: const InputDecoration(
-                                    border: InputBorder.none,
-                                    labelText: 'From',
-                                    labelStyle: TextStyle(
-                                        color: Color(0xFF94A3B8),
-                                        fontSize: 12),
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Padding(
-                            padding:
-                                EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-                            child: Divider(
-                                color: Color(0xFFE2E8F0), thickness: 1),
-                          ),
-                          // To
-                          Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFEF4444)
-                                      .withAlpha(20),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(Icons.location_on_rounded,
-                                    color: Color(0xFFEF4444), size: 18),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: TextField(
-                                  controller: _toController,
-                                  onChanged: (v) =>
-                                      setState(() {}),
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF0F172A),
-                                      fontSize: 15),
-                                  decoration: const InputDecoration(
-                                    border: InputBorder.none,
-                                    hintText: 'Where to?',
-                                    hintStyle: TextStyle(
-                                        color: Color(0xFF94A3B8),
-                                        fontSize: 15),
-                                    labelText: 'To',
-                                    labelStyle: TextStyle(
-                                        color: Color(0xFF94A3B8),
-                                        fontSize: 12),
-                                    isDense: true,
-                                    contentPadding: EdgeInsets.zero,
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
+                      onPressed: () {
+                        setState(() => _toController.text = dest);
+                        _executeTripSearch();
+                      },
                     ),
-                    const SizedBox(height: 16),
-                    // Quick destination chips
-                    Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: ['Ukkadam', 'Singanallur', 'Peelamedu', 'RS Puram']
-                          .map((d) => GestureDetector(
-                                onTap: () {
-                                  _toController.text = d;
-                                  setState(() {
-                                    _showResults = true;
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 14, vertical: 8),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white,
-                                    borderRadius: BorderRadius.circular(20),
-                                    border: Border.all(
-                                        color: Colors.grey.shade300),
-                                  ),
-                                  child: Text(d,
-                                      style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 13,
-                                          color: Color(0xFF475569))),
-                                ),
-                              ))
-                          .toList(),
-                    ),
-                    const SizedBox(height: 20),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          if (_toController.text.isNotEmpty) {
-                            setState(() => _showResults = true);
-                          }
-                        },
-                        icon: const Icon(Icons.search_rounded),
-                        label: const Text('Find Routes',
-                            style: TextStyle(
-                                fontWeight: FontWeight.bold, fontSize: 15)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF0F172A),
-                          foregroundColor: Colors.white,
-                          padding:
-                              const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
-                        ),
-                      ),
-                    ),
-                    if (_showResults) ...[
-                      const SizedBox(height: 28),
-                      Row(
-                        children: [
-                          const Text('Possible Routes',
-                              style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF0F172A))),
-                          const Spacer(),
-                          Text(
-                            '${_tripOptions.length} options',
-                            style: const TextStyle(
-                                color: Color(0xFF64748B), fontSize: 13),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      ..._tripOptions.asMap().entries.map(
-                            (entry) => _buildTripOption(
-                                entry.value, entry.key == 0, context),
-                          ),
-                    ],
-                  ],
-                ),
+                  );
+                }).toList(),
               ),
+            ),
+
+            // ── Results Body ─────────────────────────────────────────────────
+            Expanded(
+              child: searchState.isLoading
+                  ? const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(color: Color(0xFF0F172A)),
+                          SizedBox(height: 16),
+                          Text('Finding best travel routes...',
+                              style: TextStyle(
+                                  color: Color(0xFF64748B),
+                                  fontWeight: FontWeight.w600)),
+                        ],
+                      ),
+                    )
+                  : searchState.result != null
+                      ? _buildTripResults(searchState.result!, locationState)
+                      : const Center(
+                          child: Text('Enter a destination to view travel options.'),
+                        ),
             ),
           ],
         ),
@@ -293,42 +310,143 @@ class _TripPlannerScreenState extends ConsumerState<TripPlannerScreen> {
     );
   }
 
-  Widget _buildTripOption(
-      Map<String, dynamic> option, bool isBest, BuildContext context) {
+  // ─── Trip Results View (Requirements 14, 15, 16) ───────────────────────────
+  Widget _buildTripResults(
+      JourneySearchResult result, LocationState locationState) {
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      physics: const BouncingScrollPhysics(),
+      children: [
+        // Boarding Stop Notice
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: const Color(0xFFEEF2FF),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFC7D2FE)),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.directions_walk_rounded,
+                  color: Color(0xFF4F46E5), size: 20),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Board at: ${result.recommendedBoardingStop.name} (${result.recommendedBoardingStop.distanceMeters.round()} m • ${result.recommendedBoardingStop.walkMinutes} min walk)',
+                  style: const TextStyle(
+                      color: Color(0xFF312E81),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 20),
+
+        // Route Options Header
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Trip Options',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A)),
+            ),
+            Text(
+              '${result.allOptions.length} available',
+              style: const TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+
+        const SizedBox(height: 12),
+
+        // Route Options Cards (Option 1, Option 2, etc.)
+        ...result.allOptions.asMap().entries.map((entry) {
+          final idx = entry.key + 1;
+          final option = entry.value;
+          return _buildTripOptionCard(idx, option);
+        }),
+      ],
+    );
+  }
+
+  Widget _buildTripOptionCard(int optionNumber, JourneyBusOption opt) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: isBest
-            ? Border.all(color: const Color(0xFF6366F1), width: 2)
-            : Border.all(color: const Color(0xFFE2E8F0)),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withAlpha(5),
-              blurRadius: 10,
-              offset: const Offset(0, 3))
+            color: Colors.black.withAlpha(6),
+            blurRadius: 14,
+            offset: const Offset(0, 4),
+          ),
         ],
+        border: Border.all(
+          color: opt.isDirect
+              ? const Color(0xFF6366F1).withAlpha(50)
+              : const Color(0xFFE2E8F0),
+          width: 1.2,
+        ),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (isBest)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              decoration: const BoxDecoration(
-                color: Color(0xFF6366F1),
-                borderRadius:
-                    BorderRadius.vertical(top: Radius.circular(18)),
-              ),
-              child: const Center(
-                child: Text('⭐ Best Option',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 12)),
-              ),
+          // Option Header
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: opt.isDirect
+                  ? const Color(0xFFF8FAFC)
+                  : const Color(0xFFFFFBEB),
+              borderRadius:
+                  const BorderRadius.vertical(top: Radius.circular(20)),
             ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'OPTION $optionNumber',
+                  style: const TextStyle(
+                    color: Color(0xFF475569),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.8,
+                  ),
+                ),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: opt.isLive
+                        ? const Color(0xFFDCFCE7)
+                        : const Color(0xFFFEF3C7),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    opt.isLive ? '🟢 LIVE NOW' : '🕒 UPCOMING',
+                    style: TextStyle(
+                      color: opt.isLive
+                          ? const Color(0xFF16A34A)
+                          : const Color(0xFFD97706),
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -336,93 +454,109 @@ class _TripPlannerScreenState extends ConsumerState<TripPlannerScreen> {
               children: [
                 Row(
                   children: [
+                    // Bus number badge
                     Container(
-                      width: 48,
-                      height: 48,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                            colors: [Color(0xFF0F172A), Color(0xFF1E3A5F)]),
-                        borderRadius: BorderRadius.circular(14),
+                        color: const Color(0xFF0F172A),
+                        borderRadius: BorderRadius.circular(12),
                       ),
-                      child: Center(
-                        child: Text(option['number'] as String,
-                            style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w900,
-                                fontSize: 14)),
+                      child: Text(
+                        '🚌 ${opt.busNumber}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 14),
+                    const SizedBox(width: 12),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            children: [
-                              Text(option['type'] as String,
-                                  style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15,
-                                      color: Color(0xFF0F172A))),
-                              const Spacer(),
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
-                                decoration: BoxDecoration(
-                                  color: (option['statusColor'] as Color)
-                                      .withAlpha(20),
-                                  borderRadius: BorderRadius.circular(6),
-                                ),
-                                child: Text(option['status'] as String,
-                                    style: TextStyle(
-                                        color: option['statusColor'] as Color,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 11)),
-                              ),
-                            ],
+                          Text(
+                            opt.routeName,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: Color(0xFF0F172A),
+                            ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(option['route'] as String,
-                              style: const TextStyle(
-                                  color: Color(0xFF64748B), fontSize: 12),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis),
+                          const SizedBox(height: 2),
+                          Text(
+                            opt.isDirect ? 'Direct bus' : '${opt.transfers} transfer required',
+                            style: TextStyle(
+                              color: opt.isDirect
+                                  ? const Color(0xFF16A34A)
+                                  : const Color(0xFFD97706),
+                              fontWeight: FontWeight.w600,
+                              fontSize: 12,
+                            ),
+                          ),
                         ],
                       ),
                     ),
                   ],
                 ),
+
                 const SizedBox(height: 14),
-                const Divider(color: Color(0xFFF1F5F9)),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: [
-                    _buildTripStat(
-                        Icons.access_time_rounded,
-                        option['duration'] as String,
-                        'Duration'),
-                    _buildTripStat(Icons.directions_walk_rounded,
-                        option['walking'] as String, 'Walking'),
-                    _buildTripStat(Icons.schedule_rounded,
-                        option['arrival'] as String, 'Arrives'),
-                  ],
-                ),
-                const SizedBox(height: 14),
-                ElevatedButton(
-                  onPressed: () => context.go(
-                      '/passenger/live-tracking/${option['busId']}'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: isBest
-                        ? const Color(0xFF6366F1)
-                        : const Color(0xFF0F172A),
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size(double.infinity, 44),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+
+                // Stats Grid
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFC),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Text('Take This Route',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceAround,
+                    children: [
+                      _buildTripStat('Walk', '${opt.walkingMinutes} min'),
+                      Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
+                      _buildTripStat('ETA to Board', '${opt.etaMinutes} min'),
+                      Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
+                      _buildTripStat('Total Journey', opt.journeyDuration),
+                    ],
+                  ),
+                ),
+
+                if (opt.currentLocation != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    'Current live location: ${opt.currentLocation}',
+                    style: const TextStyle(
+                        fontSize: 12,
+                        color: Color(0xFF64748B),
+                        fontWeight: FontWeight.w500),
+                  ),
+                ],
+
+                const SizedBox(height: 16),
+
+                // Track Live Button
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton.icon(
+                    onPressed: () =>
+                        context.push('/passenger/live-tracking/${opt.busId}'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF0F172A),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    icon: const Icon(Icons.navigation_rounded, size: 16),
+                    label: Text(
+                      opt.isLive ? 'Track Live' : 'View Bus Tracking',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.bold),
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -432,21 +566,17 @@ class _TripPlannerScreenState extends ConsumerState<TripPlannerScreen> {
     );
   }
 
-  Widget _buildTripStat(IconData icon, String value, String label) {
+  Widget _buildTripStat(String label, String value) {
     return Column(
       children: [
-        Icon(icon, size: 18, color: const Color(0xFF6366F1)),
-        const SizedBox(height: 4),
+        Text(label,
+            style: const TextStyle(fontSize: 11, color: Color(0xFF64748B))),
+        const SizedBox(height: 2),
         Text(value,
             style: const TextStyle(
-                fontWeight: FontWeight.bold,
                 fontSize: 13,
+                fontWeight: FontWeight.bold,
                 color: Color(0xFF0F172A))),
-        Text(label,
-            style: const TextStyle(
-                fontSize: 10,
-                color: Color(0xFF94A3B8),
-                fontWeight: FontWeight.w600)),
       ],
     );
   }
