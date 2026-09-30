@@ -23,6 +23,16 @@ export async function ensureDefaultSeed(prisma: PrismaService) {
       await prisma.busStop.create({ data: stop });
     }
 
+    const defaultGeometry = [
+      { lat: 10.9601, lng: 76.9502 },
+      { lat: 10.9256, lng: 76.9330 },
+      { lat: 10.8952, lng: 76.9192 },
+      { lat: 10.8618, lng: 76.9015 },
+      { lat: 10.8420, lng: 76.8901 },
+      { lat: 10.8164, lng: 76.8749 },
+      { lat: 10.6970, lng: 76.7950 },
+    ];
+
     // Route 12A
     const route12A = await prisma.route.create({
       data: {
@@ -32,6 +42,7 @@ export async function ensureDefaultSeed(prisma: PrismaService) {
         destination: 'Pollachi',
         distanceKm: 43.5,
         estimatedDurationMinutes: 75,
+        routeGeometry: defaultGeometry,
       },
     });
 
@@ -44,6 +55,7 @@ export async function ensureDefaultSeed(prisma: PrismaService) {
         destination: 'Coimbatore',
         distanceKm: 40.2,
         estimatedDurationMinutes: 70,
+        routeGeometry: defaultGeometry,
       },
     });
 
@@ -56,18 +68,19 @@ export async function ensureDefaultSeed(prisma: PrismaService) {
         destination: 'Singanallur',
         distanceKm: 12.8,
         estimatedDurationMinutes: 35,
+        routeGeometry: defaultGeometry,
       },
     });
 
     // Route stops for 12A
     const route12AStops = [
-      { routeId: route12A.id, stopId: 'stop_ukkadam', sequence: 1, distanceFromStartKm: 0 },
-      { routeId: route12A.id, stopId: 'stop_sundakkamuthur', sequence: 2, distanceFromStartKm: 7.2 },
-      { routeId: route12A.id, stopId: 'stop_madukkarai', sequence: 3, distanceFromStartKm: 14.5 },
-      { routeId: route12A.id, stopId: 'stop_ettimadai', sequence: 4, distanceFromStartKm: 22.8 },
-      { routeId: route12A.id, stopId: 'stop_karpagam', sequence: 5, distanceFromStartKm: 28.3 },
-      { routeId: route12A.id, stopId: 'stop_kinathukadavu', sequence: 6, distanceFromStartKm: 33.9 },
-      { routeId: route12A.id, stopId: 'stop_pollachi', sequence: 7, distanceFromStartKm: 43.5 },
+      { routeId: route12A.id, stopId: 'stop_ukkadam', sequence: 1, distanceFromStartKm: 0, estimatedMinutesFromPreviousStop: 0 },
+      { routeId: route12A.id, stopId: 'stop_sundakkamuthur', sequence: 2, distanceFromStartKm: 7.2, estimatedMinutesFromPreviousStop: 12 },
+      { routeId: route12A.id, stopId: 'stop_madukkarai', sequence: 3, distanceFromStartKm: 14.5, estimatedMinutesFromPreviousStop: 12 },
+      { routeId: route12A.id, stopId: 'stop_ettimadai', sequence: 4, distanceFromStartKm: 22.8, estimatedMinutesFromPreviousStop: 14 },
+      { routeId: route12A.id, stopId: 'stop_karpagam', sequence: 5, distanceFromStartKm: 28.3, estimatedMinutesFromPreviousStop: 10 },
+      { routeId: route12A.id, stopId: 'stop_kinathukadavu', sequence: 6, distanceFromStartKm: 33.9, estimatedMinutesFromPreviousStop: 11 },
+      { routeId: route12A.id, stopId: 'stop_pollachi', sequence: 7, distanceFromStartKm: 43.5, estimatedMinutesFromPreviousStop: 16 },
     ];
     for (const rs of route12AStops) {
       await prisma.routeStop.create({ data: rs });

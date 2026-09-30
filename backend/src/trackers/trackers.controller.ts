@@ -53,17 +53,38 @@ export class TrackersController {
     return this.trackersService.deactivate(trackerId);
   }
 
-  @Post(':trackerId/assign-bus')
+  @Post(':trackerId/assign')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Assign a GPS tracker to a bus' })
+  assign(@Param('trackerId') trackerId: string, @Body() dto: AssignBusDto) {
+    return this.trackersService.assignBus(trackerId, dto.busId);
+  }
+
+  @Post(':trackerId/assign-bus')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Assign a GPS tracker to a bus (alias)' })
   assignBus(@Param('trackerId') trackerId: string, @Body() dto: AssignBusDto) {
     return this.trackersService.assignBus(trackerId, dto.busId);
   }
 
-  @Post(':trackerId/unassign-bus')
+  @Post(':trackerId/unassign')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Unassign a GPS tracker from its bus' })
+  unassign(@Param('trackerId') trackerId: string) {
+    return this.trackersService.unassignBus(trackerId);
+  }
+
+  @Post(':trackerId/unassign-bus')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Unassign a GPS tracker from its bus (alias)' })
   unassignBus(@Param('trackerId') trackerId: string) {
     return this.trackersService.unassignBus(trackerId);
+  }
+
+  @Post(':trackerId/rotate-key')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Rotate secret API key for tracker' })
+  rotateKey(@Param('trackerId') trackerId: string) {
+    return this.trackersService.rotateKey(trackerId);
   }
 }

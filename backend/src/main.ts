@@ -35,6 +35,9 @@ async function bootstrap() {
   // API prefix (with exclusions so root-level endpoints work directly)
   app.setGlobalPrefix('api/v1', {
     exclude: [
+      'health',
+      'health/(.*)',
+      'admin/(.*)',
       'gps/(.*)',
       'buses/(.*)',
       'stops/(.*)',

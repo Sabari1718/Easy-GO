@@ -1,0 +1,191 @@
+{
+  "info": {
+    "_postman_id": "7f8b9e12-4c56-4d9a-9e12-easygo-gps-v1",
+    "name": "EasyGo GPS Integration",
+    "description": "Standardized Postman collection for EasyGo Real GPS Tracker Ingestion and Admin Hardware Management.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "BASE_URL",
+      "value": "http://localhost:3000",
+      "type": "string"
+    },
+    {
+      "key": "TRACKER_ID",
+      "value": "TRK001",
+      "type": "string"
+    },
+    {
+      "key": "TRACKER_KEY",
+      "value": "trk001-secret-key",
+      "type": "string"
+    },
+    {
+      "key": "BUS_ID",
+      "value": "BUS_12A",
+      "type": "string"
+    },
+    {
+      "key": "ADMIN_KEY",
+      "value": "easygo-admin-secret-key-2026",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Admin - Register Physical Tracker",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "x-admin-key", "value": "{{ADMIN_KEY}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"trackerId\": \"{{TRACKER_ID}}\",\n  \"deviceName\": \"Bus 12A Hardware Tracker\",\n  \"busId\": \"{{BUS_ID}}\",\n  \"deviceType\": \"4G_GPS_TRACKER\",\n  \"simNumber\": \"+919876543210\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/admin/trackers",
+          "host": ["{{BASE_URL}}"],
+          "path": ["admin", "trackers"]
+        },
+        "description": "Registers a new physical GPS tracker and generates secure device secret credentials."
+      }
+    },
+    {
+      "name": "2. Admin - Assign Tracker to Bus",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "x-admin-key", "value": "{{ADMIN_KEY}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"busId\": \"{{BUS_ID}}\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/admin/trackers/{{TRACKER_ID}}/assign",
+          "host": ["{{BASE_URL}}"],
+          "path": ["admin", "trackers", "{{TRACKER_ID}}", "assign"]
+        },
+        "description": "Assigns or replaces tracker for a bus. Automatically unassigns any previous tracker."
+      }
+    },
+    {
+      "name": "3. Admin - Activate Tracker",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "x-admin-key", "value": "{{ADMIN_KEY}}" }
+        ],
+        "url": {
+          "raw": "{{BASE_URL}}/admin/trackers/{{TRACKER_ID}}/activate",
+          "host": ["{{BASE_URL}}"],
+          "path": ["admin", "trackers", "{{TRACKER_ID}}", "activate"]
+        },
+        "description": "Activates the tracker allowing GPS coordinates ingestion."
+      }
+    },
+    {
+      "name": "4. GPS Tracker - Send Location Telemetry",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "x-tracker-key", "value": "{{TRACKER_KEY}}" },
+          { "key": "x-tracker-id", "value": "{{TRACKER_ID}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"trackerId\": \"{{TRACKER_ID}}\",\n  \"latitude\": 10.960145,\n  \"longitude\": 76.950232,\n  \"speed\": 34.5,\n  \"heading\": 135.0,\n  \"accuracy\": 4.2,\n  \"timestamp\": \"{{$isoTimestamp}}\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/gps/location",
+          "host": ["{{BASE_URL}}"],
+          "path": ["gps", "location"]
+        },
+        "description": "Standard HTTPS POST endpoint called by the physical GPS tracker hardware inside the bus."
+      }
+    },
+    {
+      "name": "5. GPS Tracker - Send Heartbeat",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "x-tracker-key", "value": "{{TRACKER_KEY}}" },
+          { "key": "x-tracker-id", "value": "{{TRACKER_ID}}" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"trackerId\": \"{{TRACKER_ID}}\",\n  \"batteryLevel\": 95,\n  \"gsmSignal\": 28,\n  \"timestamp\": \"{{$isoTimestamp}}\"\n}"
+        },
+        "url": {
+          "raw": "{{BASE_URL}}/gps/heartbeat",
+          "host": ["{{BASE_URL}}"],
+          "path": ["gps", "heartbeat"]
+        },
+        "description": "Liveness heartbeat ping sent by the device when parked or stationary."
+      }
+    },
+    {
+      "name": "6. Admin - Get Tracker Status",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "x-admin-key", "value": "{{ADMIN_KEY}}" }
+        ],
+        "url": {
+          "raw": "{{BASE_URL}}/admin/trackers/{{TRACKER_ID}}",
+          "host": ["{{BASE_URL}}"],
+          "path": ["admin", "trackers", "{{TRACKER_ID}}"]
+        },
+        "description": "Returns tracker online/recent/stale/offline status, last location, and last heartbeat."
+      }
+    },
+    {
+      "name": "7. Passenger/App - Get Bus Live Location",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "{{BASE_URL}}/buses/{{BUS_ID}}/live",
+          "host": ["{{BASE_URL}}"],
+          "path": ["buses", "{{BUS_ID}}", "live"]
+        },
+        "description": "Returns current live state, ETA, route progress, and freshness status."
+      }
+    },
+    {
+      "name": "8. Admin - Deactivate Tracker",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "x-admin-key", "value": "{{ADMIN_KEY}}" }
+        ],
+        "url": {
+          "raw": "{{BASE_URL}}/admin/trackers/{{TRACKER_ID}}/deactivate",
+          "host": ["{{BASE_URL}}"],
+          "path": ["admin", "trackers", "{{TRACKER_ID}}", "deactivate"]
+        },
+        "description": "Deactivates tracker. Blocks subsequent GPS ingestion attempts with 403 Forbidden."
+      }
+    },
+    {
+      "name": "9. Admin - Rotate Tracker Key",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "x-admin-key", "value": "{{ADMIN_KEY}}" }
+        ],
+        "url": {
+          "raw": "{{BASE_URL}}/admin/trackers/{{TRACKER_ID}}/rotate-key",
+          "host": ["{{BASE_URL}}"],
+          "path": ["admin", "trackers", "{{TRACKER_ID}}", "rotate-key"]
+        },
+        "description": "Generates a new device secret key and invalidates the previous key immediately."
+      }
+    }
+  ]
+}

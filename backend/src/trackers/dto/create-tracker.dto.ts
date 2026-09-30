@@ -6,15 +6,22 @@ export class CreateTrackerDto {
   @IsString()
   trackerId: string;
 
-  @ApiProperty({ example: 'IMEI-864209041234567', description: 'Hardware IMEI or Device Identifier' })
+  @ApiProperty({ example: 'Bus 12A Tracker', description: 'Friendly device name or description', required: false })
   @IsString()
-  deviceId: string;
+  @IsOptional()
+  deviceName?: string;
 
-  @ApiProperty({ example: 'trk001-secret-key', description: 'Device specific authentication secret' })
+  @ApiProperty({ example: 'IMEI-864209041234567', description: 'Hardware IMEI or Device Identifier', required: false })
   @IsString()
-  deviceSecret: string;
+  @IsOptional()
+  deviceId?: string;
 
-  @ApiProperty({ example: 'TELTONIKA_FMB920', description: 'Device hardware model/type', required: false })
+  @ApiProperty({ example: 'trk001-secret-key', description: 'Device authentication secret (auto-generated if omitted)', required: false })
+  @IsString()
+  @IsOptional()
+  deviceSecret?: string;
+
+  @ApiProperty({ example: '4G_GPS_TRACKER', description: 'Device hardware model/type', required: false })
   @IsString()
   @IsOptional()
   deviceType?: string;

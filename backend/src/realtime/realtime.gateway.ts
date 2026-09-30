@@ -179,4 +179,8 @@ export class RealtimeGateway
   getSubscriberCount(busId: string): number {
     return this.busSubscriptions.get(busId)?.size || 0;
   }
+
+  isHealthy(): boolean {
+    return !!this.server;
+  }
 }

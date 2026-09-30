@@ -23,7 +23,9 @@
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
     "prisma:reset": "prisma migrate reset --force",
-    "simulate": "node simulate.js"
+    "simulate": "node simulate.js",
+    "simulate:hardware": "node simulate_hardware_gps.js",
+    "test:gps": "node test_real_gps_pipeline.js"
   },
   "dependencies": {
     "@nestjs/common": "^10.0.0",

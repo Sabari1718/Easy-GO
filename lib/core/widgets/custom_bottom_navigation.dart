@@ -18,72 +18,82 @@ class CustomBottomNavigation extends StatelessWidget {
     if (location.startsWith('/passenger/profile')) currentIndex = 4;
 
     return Scaffold(
+      extendBody: true,
       body: child,
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(12),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
+      bottomNavigationBar: SafeArea(
+        child: Container(
+          margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+          decoration: BoxDecoration(
+            color: const Color(0xFF090E1E),
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(
+              color: Colors.white.withAlpha(25),
+              width: 1.0,
             ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 8.0, vertical: 8.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildNavItem(
-                  context: context,
-                  icon: Icons.home_rounded,
-                  activeIcon: Icons.home_rounded,
-                  label: 'Home',
-                  index: 0,
-                  currentIndex: currentIndex,
-                  onTap: () => context.go('/passenger/home'),
-                ),
-                _buildNavItem(
-                  context: context,
-                  icon: Icons.directions_bus_outlined,
-                  activeIcon: Icons.directions_bus_rounded,
-                  label: 'Live',
-                  index: 1,
-                  currentIndex: currentIndex,
-                  onTap: () => context.go('/passenger/tracking'),
-                ),
-                _buildNavItem(
-                  context: context,
-                  icon: Icons.route_outlined,
-                  activeIcon: Icons.route_rounded,
-                  label: 'Routes',
-                  index: 2,
-                  currentIndex: currentIndex,
-                  onTap: () => context.go('/passenger/routes'),
-                ),
-                _buildNavItem(
-                  context: context,
-                  icon: Icons.notifications_none_rounded,
-                  activeIcon: Icons.notifications_rounded,
-                  label: 'Alerts',
-                  index: 3,
-                  currentIndex: currentIndex,
-                  onTap: () => context.go('/passenger/notifications'),
-                ),
-                _buildNavItem(
-                  context: context,
-                  icon: Icons.person_outline_rounded,
-                  activeIcon: Icons.person_rounded,
-                  label: 'Profile',
-                  index: 4,
-                  currentIndex: currentIndex,
-                  onTap: () => context.go('/passenger/profile'),
-                ),
-              ],
-            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF070D1B).withAlpha(120),
+                blurRadius: 28,
+                offset: const Offset(0, 10),
+                spreadRadius: 2,
+              ),
+              BoxShadow(
+                color: const Color(0xFF4F46E5).withAlpha(30),
+                blurRadius: 16,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildNavItem(
+                context: context,
+                icon: Icons.home_outlined,
+                activeIcon: Icons.home_rounded,
+                label: 'Home',
+                index: 0,
+                currentIndex: currentIndex,
+                onTap: () => context.go('/passenger/home'),
+              ),
+              _buildNavItem(
+                context: context,
+                icon: Icons.directions_bus_outlined,
+                activeIcon: Icons.directions_bus_rounded,
+                label: 'Live',
+                index: 1,
+                currentIndex: currentIndex,
+                onTap: () => context.go('/passenger/tracking'),
+              ),
+              _buildNavItem(
+                context: context,
+                icon: Icons.alt_route_outlined,
+                activeIcon: Icons.alt_route_rounded,
+                label: 'Routes',
+                index: 2,
+                currentIndex: currentIndex,
+                onTap: () => context.go('/passenger/routes'),
+              ),
+              _buildNavItem(
+                context: context,
+                icon: Icons.notifications_none_rounded,
+                activeIcon: Icons.notifications_rounded,
+                label: 'Alerts',
+                index: 3,
+                currentIndex: currentIndex,
+                onTap: () => context.go('/passenger/notifications'),
+              ),
+              _buildNavItem(
+                context: context,
+                icon: Icons.person_outline_rounded,
+                activeIcon: Icons.person_rounded,
+                label: 'Profile',
+                index: 4,
+                currentIndex: currentIndex,
+                onTap: () => context.go('/passenger/profile'),
+              ),
+            ],
           ),
         ),
       ),
@@ -105,17 +115,32 @@ class CustomBottomNavigation extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 250),
+        duration: const Duration(milliseconds: 280),
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.symmetric(
-          horizontal: isSelected ? 16.0 : 10.0,
-          vertical: 10.0,
+          horizontal: isSelected ? 15.0 : 10.0,
+          vertical: 9.0,
         ),
         decoration: BoxDecoration(
-          color: isSelected
-              ? const Color(0xFF0F172A)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
+          gradient: isSelected
+              ? const LinearGradient(
+                  colors: [
+                    Color(0xFF4F46E5),
+                    Color(0xFF3B82F6),
+                  ],
+                )
+              : null,
+          color: isSelected ? null : Colors.transparent,
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: const Color(0xFF4F46E5).withAlpha(90),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : null,
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -123,7 +148,7 @@ class CustomBottomNavigation extends StatelessWidget {
             Icon(
               isSelected ? activeIcon : icon,
               color: isSelected ? Colors.white : const Color(0xFF94A3B8),
-              size: 22,
+              size: 21,
             ),
             if (isSelected) ...[
               const SizedBox(width: 6),
@@ -131,8 +156,9 @@ class CustomBottomNavigation extends StatelessWidget {
                 label,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontWeight: FontWeight.w700,
-                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12.5,
+                  letterSpacing: -0.2,
                 ),
               ),
             ],

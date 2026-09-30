@@ -54,6 +54,11 @@ export class TrackingService {
         throw new ForbiddenException(`Tracker device '${trackerId}' is inactive or suspended.`);
       }
 
+      // Check unassigned tracker
+      if (tracker && !tracker.busId) {
+        throw new ForbiddenException(`Tracker '${trackerId}' is not assigned to any bus. Assign it to a bus before sending GPS updates.`);
+      }
+
       // Check cross-bus protection: tracker cannot send for another bus
       if (tracker && tracker.bus && update.busId) {
         const reqBusClean = update.busId.replace(/^bus_/i, '').replace(/^bus-/i, '').toUpperCase();
@@ -97,13 +102,38 @@ export class TrackingService {
     // 3. If still no tracker/bus in DB, provide fallback for dev/simulator for 12A & 21
     if (!tracker || !tracker.bus) {
       const busNum = (update.busId || trackerId || '12A').replace(/^bus_/i, '').toUpperCase();
+      const mockBusId = update.busId || `BUS_${busNum}`;
+
+      // Check out-of-order for mock fallback
+      const existingMockLive = await this.redis.getJson<BusLiveState>(`${this.REDIS_BUS_PREFIX}${mockBusId}`);
+      if (existingMockLive && existingMockLive.lastUpdated && update.timestamp) {
+        const existingTime = new Date(existingMockLive.lastUpdated).getTime();
+        const incomingTime = new Date(update.timestamp).getTime();
+        if (incomingTime < existingTime) {
+          this.logger.warn(
+            `GPS rejected: Out-of-order packet (timestamp ${update.timestamp} is older than ${existingMockLive.lastUpdated}) for ${busNum}`,
+          );
+          return {
+            ...existingMockLive,
+            outOfOrderRejected: true,
+            rejectedTimestamp: update.timestamp,
+          } as any;
+        }
+        if (incomingTime === existingTime) {
+          return {
+            ...existingMockLive,
+            duplicateIgnored: true,
+          } as any;
+        }
+      }
+
       this.logger.log(`Using mock route association for unregistered bus: ${busNum}`);
       const mockRouteName = busNum.includes('21') || busNum.includes('24')
         ? 'Route 24 - Pollachi → Coimbatore'
         : 'Route 12A - Ukkadam → Pollachi';
       
       const liveState: BusLiveState = {
-        busId: update.busId || `BUS_${busNum}`,
+        busId: mockBusId,
         tripId: `trip_${busNum.toLowerCase()}`,
         busNumber: busNum,
         routeId: busNum.includes('21') || busNum.includes('24') ? 'r24' : 'r12a',
@@ -151,12 +181,43 @@ export class TrackingService {
       };
     }
 
-    // 2. Update tracker last seen
+    // Check out-of-order and duplicate timestamp for registered bus (Requirement 11)
+    const existingLive = await this.redis.getJson<BusLiveState>(`${this.REDIS_BUS_PREFIX}${bus.id}`);
+    if (existingLive && existingLive.lastUpdated && update.timestamp) {
+      const existingTime = new Date(existingLive.lastUpdated).getTime();
+      const incomingTime = new Date(update.timestamp).getTime();
+
+      if (incomingTime < existingTime) {
+        this.logger.warn(
+          `GPS rejected: Out-of-order packet (timestamp ${update.timestamp} is older than current ${existingLive.lastUpdated}) for bus ${bus.busNumber}`,
+        );
+        return {
+          ...existingLive,
+          outOfOrderRejected: true,
+          rejectedTimestamp: update.timestamp,
+        } as any;
+      }
+
+      if (incomingTime === existingTime) {
+        this.logger.warn(
+          `GPS duplicate packet ignored: timestamp ${update.timestamp} already processed for bus ${bus.busNumber}`,
+        );
+        return {
+          ...existingLive,
+          duplicateIgnored: true,
+        } as any;
+      }
+    }
+
+    // 2. Update tracker last seen & last location in DB
     try {
       if (tracker.id && !tracker.id.startsWith('trk-')) {
         await this.prisma.busTracker.update({
           where: { id: tracker.id },
-          data: { lastSeenAt: new Date() },
+          data: {
+            lastSeenAt: new Date(),
+            lastLocationAt: new Date(update.timestamp),
+          },
         });
       }
     } catch {}

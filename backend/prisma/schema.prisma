@@ -114,21 +114,25 @@ model RouteStop {
 }
 
 model BusTracker {
-  id           String        @id @default(uuid())
-  deviceId     String        @unique // Physical device IMEI or hardware ID
-  trackerId    String?       @unique // Logical Tracker ID e.g. TRK001
-  deviceSecret String?               // Hardware API key / secret
-  deviceType   String?       @default("4G_GPS_TRACKER")
-  busId        String?       @unique
-  simNumber    String?
-  provider     String?
-  status       TrackerStatus @default(ACTIVE)
-  isActive     Boolean       @default(true)
-  lastSeenAt   DateTime?
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  bus          Bus?          @relation(fields: [busId], references: [id])
+  id              String        @id @default(uuid())
+  deviceId        String        @unique // Physical device IMEI or hardware ID
+  trackerId       String?       @unique // Logical Tracker ID e.g. TRK001
+  deviceName      String?               // Human friendly name e.g. Bus 12A Tracker
+  deviceSecret    String?               // Hardware API key / secret
+  deviceType      String?       @default("4G_GPS_TRACKER")
+  busId           String?       @unique
+  simNumber       String?
+  provider        String?
+  status          TrackerStatus @default(ACTIVE)
+  isActive        Boolean       @default(true)
+  lastSeenAt      DateTime?
+  lastLocationAt  DateTime?
+  lastHeartbeatAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  bus             Bus?          @relation(fields: [busId], references: [id])
 
+  @@index([lastSeenAt])
   @@map("bus_trackers")
 }
 
@@ -136,6 +140,7 @@ model Bus {
   id            String        @id @default(uuid())
   busNumber     String        @unique
   vehicleNumber String?
+  operator      String?
   routeId       String
   status        BusStatus     @default(ACTIVE)
   createdAt     DateTime      @default(now())

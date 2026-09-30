@@ -2,12 +2,17 @@ import { IsString, IsOptional, IsBoolean } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateTrackerDto {
+  @ApiProperty({ example: 'Bus 12A Tracker', description: 'Friendly device name or description', required: false })
+  @IsString()
+  @IsOptional()
+  deviceName?: string;
+
   @ApiProperty({ example: 'new-device-secret', description: 'Updated device secret', required: false })
   @IsString()
   @IsOptional()
   deviceSecret?: string;
 
-  @ApiProperty({ example: 'TELTONIKA_FMB920', description: 'Device type/model', required: false })
+  @ApiProperty({ example: '4G_GPS_TRACKER', description: 'Device type/model', required: false })
   @IsString()
   @IsOptional()
   deviceType?: string;
