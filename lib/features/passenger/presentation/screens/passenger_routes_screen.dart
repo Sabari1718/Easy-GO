@@ -87,6 +87,17 @@ class _PassengerRoutesScreenState
               backgroundColor: const Color(0xFF0F172A),
               pinned: true,
               automaticallyImplyLeading: false,
+              leading: IconButton(
+                icon: const Icon(Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white, size: 20),
+                onPressed: () {
+                  if (context.canPop()) {
+                    context.pop();
+                  } else {
+                    context.go('/passenger/home');
+                  }
+                },
+              ),
               expandedHeight: 110,
               shape: const RoundedRectangleBorder(
                 borderRadius:
@@ -292,10 +303,13 @@ class _PassengerRoutesScreenState
                             const Icon(Icons.directions_bus,
                                 size: 13, color: Color(0xFF94A3B8)),
                             const SizedBox(width: 4),
-                            Text('$buses ${buses == 1 ? 'bus' : 'buses'} active',
-                                style: const TextStyle(
-                                    color: Color(0xFF64748B),
-                                    fontSize: 12)),
+                            Flexible(
+                              child: Text('$buses ${buses == 1 ? 'bus' : 'buses'} active',
+                                  style: const TextStyle(
+                                      color: Color(0xFF64748B),
+                                      fontSize: 12),
+                                  overflow: TextOverflow.ellipsis),
+                            ),
                           ],
                         ),
                       ],

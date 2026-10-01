@@ -168,7 +168,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
               ),
 
               // 3. Right Floating Map Controls
-              _buildFloatingMapControls(currentPos, busState.heading),
+              _buildFloatingMapControls(currentPos, busState.heading, locationState),
 
               // 4. Developer Simulation Floating Controls (if toggled)
               if (_showDevControls) _buildDevControlsPanel(busState, repo),
@@ -262,9 +262,12 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
           ),
           Row(
             children: [
-              Text(
-                routeText,
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
+              Flexible(
+                child: Text(
+                  routeText,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               if (busState != null) ...[
                 const SizedBox(width: 6),
@@ -445,19 +448,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
       );
     }
 
-    // 3. User Marker
-    final userPos = locationState.currentPosition;
-    if (userPos != null) {
-      markers.add(
-        Marker(
-          markerId: const MarkerId('user_location'),
-          position: LatLng(userPos.latitude, userPos.longitude),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueCyan),
-          infoWindow: const InfoWindow(title: 'You are here'),
-          zIndexInt: 7,
-        ),
-      );
-    }
+    // 3. User Marker logic removed in favor of myLocationEnabled
 
     return GoogleMap(
       initialCameraPosition: CameraPosition(
@@ -471,7 +462,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
       },
       markers: markers,
       polylines: polylines,
-      myLocationEnabled: false,
+      myLocationEnabled: true,
       myLocationButtonEnabled: false,
       zoomControlsEnabled: false,
       mapToolbarEnabled: false,
@@ -783,7 +774,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
   }
 
   // ─── Floating Map Controls ──────────────────────────────────────────────────
-  Widget _buildFloatingMapControls(LatLng busPos, double heading) {
+  Widget _buildFloatingMapControls(LatLng busPos, double heading, LocationState locationState) {
     return Positioned(
       top: 170,
       right: 16,
@@ -792,8 +783,8 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
           // Follow Bus Toggle
           _buildMapBtn(
             icon: _followBus
-                ? Icons.my_location_rounded
-                : Icons.location_searching_rounded,
+                ? Icons.directions_bus_filled_rounded
+                : Icons.directions_bus_outlined,
             color: _followBus ? const Color(0xFF6366F1) : const Color(0xFF475569),
             label: _followBus ? 'Following' : 'Follow',
             onTap: () {
@@ -802,12 +793,30 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
             },
           ),
           const SizedBox(height: 8),
-          // Recenter
+          // Recenter to User Location
           _buildMapBtn(
-            icon: Icons.center_focus_strong_rounded,
+            icon: Icons.my_location_rounded,
             color: const Color(0xFF475569),
             label: 'Recenter',
-            onTap: () => _recenterBus(busPos, heading),
+            onTap: () {
+              setState(() => _followBus = false);
+              final userPos = locationState.currentPosition;
+              if (userPos != null && _mapController != null) {
+                _mapController!.animateCamera(
+                  CameraUpdate.newCameraPosition(
+                    CameraPosition(
+                      target: LatLng(userPos.latitude, userPos.longitude),
+                      zoom: 15.5,
+                      tilt: 0,
+                    ),
+                  ),
+                );
+              } else if (!locationState.isLocationEnabled) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Location permission is required to show your position.')),
+                );
+              }
+            },
           ),
           const SizedBox(height: 8),
           // Fit entire route
@@ -815,7 +824,10 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
             icon: Icons.route_rounded,
             color: const Color(0xFF475569),
             label: 'Fit Route',
-            onTap: _fitRouteBounds,
+            onTap: () {
+              setState(() => _followBus = false);
+              _fitRouteBounds();
+            },
           ),
           const SizedBox(height: 8),
           // Zoom in
@@ -823,7 +835,10 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
             icon: Icons.add_rounded,
             color: const Color(0xFF475569),
             label: 'Zoom In',
-            onTap: () => _mapController?.animateCamera(CameraUpdate.zoomIn()),
+            onTap: () {
+              setState(() => _followBus = false);
+              _mapController?.animateCamera(CameraUpdate.zoomIn());
+            },
           ),
           const SizedBox(height: 8),
           // Zoom out
@@ -831,7 +846,10 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
             icon: Icons.remove_rounded,
             color: const Color(0xFF475569),
             label: 'Zoom Out',
-            onTap: () => _mapController?.animateCamera(CameraUpdate.zoomOut()),
+            onTap: () {
+              setState(() => _followBus = false);
+              _mapController?.animateCamera(CameraUpdate.zoomOut());
+            },
           ),
         ],
       ),

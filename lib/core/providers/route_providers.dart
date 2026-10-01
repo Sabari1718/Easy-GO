@@ -17,7 +17,7 @@ final recentRoutesProvider = FutureProvider<List<RouteModel>>((ref) async {
   return await repository.getRecentRoutes();
 });
 
-final selectedRouteProvider = FutureProvider.family<RouteModel, String>((ref, id) async {
+final selectedRouteProvider = FutureProvider.family<RouteModel?, String>((ref, id) async {
   final repository = ref.watch(routeRepositoryProvider);
   return await repository.getRouteById(id);
 });
