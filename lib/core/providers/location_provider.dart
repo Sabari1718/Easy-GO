@@ -49,6 +49,7 @@ class LocationState extends Equatable {
 
 class LocationNotifier extends Notifier<LocationState> {
   StreamSubscription<Position>? _positionStreamSubscription;
+  Position? _lastGeocodedPosition; // Track last position we actually reverse-geocoded
 
   @override
   LocationState build() {
@@ -132,18 +133,45 @@ class LocationNotifier extends Notifier<LocationState> {
   }
 
   Future<void> _updatePositionAndAddress(Position position) async {
-    String address = state.address ?? "Unknown Location";
+    // Always update position immediately for real-time accuracy
+    state = state.copyWith(
+      currentPosition: position,
+      isLoading: false,
+    );
+
+    // Only reverse-geocode if user moved significantly (saves battery & data).
+    // Threshold: 100 m from last geocoded position.
+    bool shouldGeocode = false;
+    if (_lastGeocodedPosition == null) {
+      shouldGeocode = true;
+    } else {
+      final distM = Geolocator.distanceBetween(
+        _lastGeocodedPosition!.latitude,
+        _lastGeocodedPosition!.longitude,
+        position.latitude,
+        position.longitude,
+      );
+      shouldGeocode = distM >= 100.0;
+    }
+
+    if (!shouldGeocode) return;
+    _lastGeocodedPosition = position;
+
+    String address = state.address ?? 'Unknown Location';
     try {
       final geocodingInstance = geocoding.Geocoding();
-      List<geocoding.Placemark> placemarks = await geocodingInstance.placemarkFromCoordinates(
+      final List<geocoding.Placemark> placemarks =
+          await geocodingInstance.placemarkFromCoordinates(
         position.latitude,
         position.longitude,
       );
       if (placemarks.isNotEmpty) {
         final place = placemarks.first;
-        String area = place.subLocality ?? place.thoroughfare ?? place.name ?? '';
-        String city = place.locality ?? place.subAdministrativeArea ?? '';
-        
+        final String area =
+            place.subLocality ?? place.thoroughfare ?? place.name ?? '';
+        final String city =
+            place.locality ?? place.subAdministrativeArea ?? '';
+
         if (area.isNotEmpty && city.isNotEmpty) {
           address = '$area, $city';
         } else if (area.isNotEmpty) {
@@ -151,19 +179,19 @@ class LocationNotifier extends Notifier<LocationState> {
         } else if (city.isNotEmpty) {
           address = city;
         } else {
-          address = 'Lat: ${position.latitude.toStringAsFixed(2)}, Lng: ${position.longitude.toStringAsFixed(2)}';
+          address =
+              'Lat: ${position.latitude.toStringAsFixed(2)}, Lng: ${position.longitude.toStringAsFixed(2)}';
         }
       }
     } catch (e) {
-      // Fallback to coordinates if geocoding fails
-      address = '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
+      address =
+          '${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)}';
     }
 
-    state = state.copyWith(
-      currentPosition: position,
-      address: address,
-      isLoading: false,
-    );
+    // Only update state if geocoding actually produced a new address
+    if (address != state.address) {
+      state = state.copyWith(address: address);
+    }
   }
 }
 

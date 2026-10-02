@@ -24,6 +24,8 @@ class BackendLiveBusTrackingRepository implements LiveBusTrackingRepository {
   final Map<String, StreamController<BusLiveState>> _streamControllers = {};
   final Map<String, BusLiveState> _lastKnownStates = {};
   final Set<String> _activeSubscribedBuses = {};
+  // One fallback timer per busId — prevents timer leaks on repeated watchBus calls
+  final Map<String, Timer> _fallbackTimers = {};
 
   BackendLiveBusTrackingRepository._internal() {
     _initSocket();
@@ -124,10 +126,12 @@ class BackendLiveBusTrackingRepository implements LiveBusTrackingRepository {
     // 2. Fetch latest live state via HTTP GET /buses/:busId/live
     _fetchInitialLiveState(busId);
 
-    // 3. Fallback timer if backend is disconnected or offline
-    Timer.periodic(const Duration(seconds: 4), (timer) {
+    // 3. Fallback timer — only one per busId, cancel previous if any
+    _fallbackTimers[busId]?.cancel();
+    _fallbackTimers[busId] = Timer.periodic(const Duration(seconds: 4), (timer) {
       if (_streamControllers[busId]?.isClosed != false) {
         timer.cancel();
+        _fallbackTimers.remove(busId);
         return;
       }
       if (!_isConnected) {
@@ -219,6 +223,10 @@ class BackendLiveBusTrackingRepository implements LiveBusTrackingRepository {
   }
 
   void dispose() {
+    for (final timer in _fallbackTimers.values) {
+      timer.cancel();
+    }
+    _fallbackTimers.clear();
     _socket?.disconnect();
     _socket?.dispose();
     for (final ctrl in _streamControllers.values) {

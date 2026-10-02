@@ -9,6 +9,21 @@ import '../../domain/models/bus_live_state.dart';
 import '../../data/repositories/mock_live_bus_tracking_repository.dart';
 import '../../data/services/mock_live_bus_service.dart';
 
+// Precomputed constant polyline for the full route — computed once at startup.
+final Set<Polyline> _cachedRoute12aPolyline = {
+  Polyline(
+    polylineId: const PolylineId('route_12a'),
+    points: MockLiveBusTrackingRepository.ukkadamPollachiPolyline
+        .map((p) => LatLng(p.lat, p.lng))
+        .toList(growable: false),
+    color: const Color(0xFF6366F1),
+    width: 4,
+    startCap: Cap.roundCap,
+    endCap: Cap.roundCap,
+    jointType: JointType.round,
+  ),
+};
+
 /// The "Live" tab — shows all active buses on a map + a list
 class PassengerTrackingScreen extends ConsumerStatefulWidget {
   const PassengerTrackingScreen({super.key});
@@ -38,7 +53,8 @@ class _PassengerTrackingScreenState
             : const LatLng(10.9572, 76.9485));
 
     final Set<Marker> mapMarkers = {};
-    final Set<Polyline> mapPolylines = {};
+    // Use cached polyline — the route never changes between renders
+    final Set<Polyline> mapPolylines = bus12a != null ? _cachedRoute12aPolyline : {};
 
     if (bus12a != null) {
       mapMarkers.add(
@@ -52,21 +68,6 @@ class _PassengerTrackingScreenState
             title: 'Bus 12A (${bus12a.status.label})',
             snippet: 'Next: ${bus12a.nextStopName} • ETA ${bus12a.etaMinutes}m',
           ),
-        ),
-      );
-
-      // Add polyline for Ukkadam -> Pollachi
-      mapPolylines.add(
-        Polyline(
-          polylineId: const PolylineId('route_12a'),
-          points: MockLiveBusTrackingRepository.ukkadamPollachiPolyline
-              .map((p) => LatLng(p.lat, p.lng))
-              .toList(),
-          color: const Color(0xFF6366F1),
-          width: 4,
-          startCap: Cap.roundCap,
-          endCap: Cap.roundCap,
-          jointType: JointType.round,
         ),
       );
     }

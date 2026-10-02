@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -9,6 +10,14 @@ import '../../data/repositories/mock_live_bus_tracking_repository.dart';
 import '../../domain/models/bus_live_state.dart';
 import '../../domain/repositories/live_bus_tracking_repository.dart';
 import '../../data/services/mock_live_bus_service.dart';
+
+// ─── Precomputed static polyline points (computed once, never recreated) ──────
+final List<LatLng> _staticPolylinePoints = MockLiveBusTrackingRepository
+    .ukkadamPollachiPolyline
+    .map((p) => LatLng(p.lat, p.lng))
+    .toList(growable: false);
+
+// ─── Main Screen ─────────────────────────────────────────────────────────────
 
 class LiveTrackingScreen extends ConsumerStatefulWidget {
   final String busId;
@@ -21,24 +30,32 @@ class LiveTrackingScreen extends ConsumerStatefulWidget {
 
 class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
     with TickerProviderStateMixin {
-  GoogleMapController? _mapController;
   bool _followBus = true;
   bool _showDetailsPanel = true;
   bool _showDevControls = false;
 
-  // Smooth marker interpolation
+  // Smooth marker interpolation — driven by Ticker, NOT by setState
   LatLng? _previousLatLng;
   LatLng? _targetLatLng;
-  LatLng? _animatedLatLng;
+  LatLng _animatedLatLng = const LatLng(10.9902, 76.9607);
+
   late AnimationController _animController;
   Animation<double>? _anim;
+
+  // Map controller is owned by _LiveMapWidget; we store a reference here
+  // via a callback so the parent can still trigger camera moves.
+  GoogleMapController? _mapController;
+
+  void _onMapControllerReady(GoogleMapController ctrl) {
+    _mapController = ctrl;
+  }
 
   @override
   void initState() {
     super.initState();
     _animController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 800),
     );
   }
 
@@ -48,6 +65,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
     super.dispose();
   }
 
+  // ── Called when a new bus position arrives (NOT inside build) ──────────────
   void _onBusPositionUpdate(LatLng newPos) {
     if (_targetLatLng == null) {
       _targetLatLng = newPos;
@@ -55,51 +73,51 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
       return;
     }
 
-    if (_targetLatLng != newPos) {
-      _previousLatLng = _animatedLatLng ?? _targetLatLng;
-      _targetLatLng = newPos;
-
-      _animController.reset();
-      _anim = Tween<double>(begin: 0.0, end: 1.0).animate(
-        CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
-      )..addListener(() {
-          final t = _anim?.value ?? 1.0;
-          if (_previousLatLng != null && _targetLatLng != null) {
-            final lat = _previousLatLng!.latitude +
-                (_targetLatLng!.latitude - _previousLatLng!.latitude) * t;
-            final lng = _previousLatLng!.longitude +
-                (_targetLatLng!.longitude - _previousLatLng!.longitude) * t;
-            setState(() {
-              _animatedLatLng = LatLng(lat, lng);
-            });
-          }
-        });
-      _animController.forward();
+    // Skip animation if the difference is negligible (< ~1 meter)
+    final latDiff = (newPos.latitude - _targetLatLng!.latitude).abs();
+    final lngDiff = (newPos.longitude - _targetLatLng!.longitude).abs();
+    if (latDiff < 0.000009 && lngDiff < 0.000009) {
+      return;
     }
+
+    _previousLatLng = _animatedLatLng;
+    _targetLatLng = newPos;
+
+    _animController.reset();
+    final prevLat = _previousLatLng!.latitude;
+    final prevLng = _previousLatLng!.longitude;
+    final targLat = newPos.latitude;
+    final targLng = newPos.longitude;
+
+    _anim = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animController, curve: Curves.easeInOut),
+    )..addListener(() {
+        final t = _anim?.value ?? 1.0;
+        _animatedLatLng = LatLng(
+          prevLat + (targLat - prevLat) * t,
+          prevLng + (targLng - prevLng) * t,
+        );
+        // Notify the _LiveMapWidget via its key directly without calling setState
+        // on the parent. The map widget has its own _animatedLatLng reference.
+        _mapWidgetKey.currentState?.updateAnimatedPosition(_animatedLatLng);
+      });
+    _animController.forward();
   }
 
   void _fitRouteBounds() {
     if (_mapController == null) return;
-    final poly = MockLiveBusTrackingRepository.ukkadamPollachiPolyline;
-    double minLat = poly.first.lat;
-    double maxLat = poly.first.lat;
-    double minLng = poly.first.lng;
-    double maxLng = poly.first.lng;
-
-    for (final p in poly) {
-      if (p.lat < minLat) minLat = p.lat;
-      if (p.lat > maxLat) maxLat = p.lat;
-      if (p.lng < minLng) minLng = p.lng;
-      if (p.lng > maxLng) maxLng = p.lng;
-    }
-
-    final bounds = LatLngBounds(
-      southwest: LatLng(minLat, minLng),
-      northeast: LatLng(maxLat, maxLng),
-    );
-
+    const minLat = 10.6588;
+    const maxLat = 10.9902;
+    const minLng = 76.9030;
+    const maxLng = 77.0220;
     _mapController!.animateCamera(
-      CameraUpdate.newLatLngBounds(bounds, 60),
+      CameraUpdate.newLatLngBounds(
+        LatLngBounds(
+          southwest: const LatLng(minLat, minLng),
+          northeast: const LatLng(maxLat, maxLng),
+        ),
+        60,
+      ),
     );
   }
 
@@ -117,12 +135,18 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
     );
   }
 
+  // Key so parent can call methods on _LiveMapWidget state
+  final GlobalKey<_LiveMapWidgetState> _mapWidgetKey =
+      GlobalKey<_LiveMapWidgetState>();
+
   @override
   Widget build(BuildContext context) {
-    final locationState = ref.watch(locationProvider);
+    // Watch only what the AppBar and outer panels need.
+    // We do NOT watch locationProvider here — the map uses myLocationEnabled
+    // built-in and we only need userPos for the recenter button (read-only).
+    final isFav = ref.watch(favoritesProvider).contains(widget.busId);
     final busStateAsync = ref.watch(busLiveStateStreamProvider(widget.busId));
     final repo = ref.read(liveBusTrackingRepositoryProvider);
-    final isFav = ref.watch(favoritesProvider).contains(widget.busId);
 
     return Scaffold(
       backgroundColor: const Color(0xFF0F172A),
@@ -131,28 +155,39 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
       body: busStateAsync.when(
         data: (busState) {
           final busPos = LatLng(busState.latitude, busState.longitude);
-          _onBusPositionUpdate(busPos);
 
-          final currentPos = _animatedLatLng ?? busPos;
-
-          // Camera follow bus
-          if (_followBus && _mapController != null) {
-            _mapController!.animateCamera(
-              CameraUpdate.newCameraPosition(
-                CameraPosition(
-                  target: currentPos,
-                  zoom: 15.5,
-                  bearing: busState.heading,
-                  tilt: 30.0,
+          // Side-effect: update animation. We use addPostFrameCallback so this
+          // never runs inside a build phase and never triggers cascading rebuilds.
+          SchedulerBinding.instance.addPostFrameCallback((_) {
+            _onBusPositionUpdate(busPos);
+            if (_followBus && _mapController != null) {
+              _mapController!.animateCamera(
+                CameraUpdate.newCameraPosition(
+                  CameraPosition(
+                    target: _animatedLatLng,
+                    zoom: 15.5,
+                    bearing: busState.heading,
+                    tilt: 30.0,
+                  ),
                 ),
-              ),
-            );
-          }
+              );
+            }
+          });
 
           return Stack(
             children: [
-              // 1. Google Map
-              _buildMap(busState, currentPos, locationState, repo),
+              // 1. Google Map — isolated widget that controls its own rebuilds
+              _LiveMapWidget(
+                key: _mapWidgetKey,
+                busId: widget.busId,
+                busState: busState,
+                initialPos: _animatedLatLng,
+                onMapReady: _onMapControllerReady,
+                onUserPan: () {
+                  if (_followBus) setState(() => _followBus = false);
+                },
+                repo: repo,
+              ),
 
               // 2. Top Live Status Header & "Is My Bus Coming?" Banner
               SafeArea(
@@ -168,7 +203,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
               ),
 
               // 3. Right Floating Map Controls
-              _buildFloatingMapControls(currentPos, busState.heading, locationState),
+              _buildFloatingMapControls(busPos, busState.heading),
 
               // 4. Developer Simulation Floating Controls (if toggled)
               if (_showDevControls) _buildDevControlsPanel(busState, repo),
@@ -337,144 +372,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
     );
   }
 
-  // ─── Google Map ─────────────────────────────────────────────────────────────
-  Widget _buildMap(BusLiveState busState, LatLng currentPos,
-      LocationState locationState, LiveBusTrackingRepository repo) {
-    final allPoly = MockLiveBusTrackingRepository.ukkadamPollachiPolyline;
-    final allStops = MockLiveBusTrackingRepository.ukkadamPollachiStops;
-
-    // Split polyline into completed section and remaining section
-    final int splitIdx = busState.currentRoutePointIndex.clamp(0, allPoly.length - 1);
-
-    final completedPoints = <LatLng>[];
-    for (int i = 0; i <= splitIdx; i++) {
-      completedPoints.add(LatLng(allPoly[i].lat, allPoly[i].lng));
-    }
-    completedPoints.add(currentPos);
-
-    final remainingPoints = <LatLng>[currentPos];
-    for (int i = splitIdx + 1; i < allPoly.length; i++) {
-      remainingPoints.add(LatLng(allPoly[i].lat, allPoly[i].lng));
-    }
-
-    final Set<Polyline> polylines = {
-      // Completed route (Emerald Green / Muted)
-      Polyline(
-        polylineId: const PolylineId('completed_route'),
-        points: completedPoints,
-        color: const Color(0xFF10B981),
-        width: 6,
-        startCap: Cap.roundCap,
-        endCap: Cap.roundCap,
-        jointType: JointType.round,
-      ),
-      // Remaining route (Vibrant Primary Indigo)
-      Polyline(
-        polylineId: const PolylineId('remaining_route'),
-        points: remainingPoints,
-        color: const Color(0xFF6366F1),
-        width: 6,
-        startCap: Cap.roundCap,
-        endCap: Cap.roundCap,
-        jointType: JointType.round,
-      ),
-    };
-
-    final Set<Marker> markers = {};
-
-    // 1. Bus Marker (rotates with heading)
-    markers.add(
-      Marker(
-        markerId: MarkerId('bus_${widget.busId}'),
-        position: currentPos,
-        rotation: busState.heading,
-        anchor: const Offset(0.5, 0.5),
-        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
-        infoWindow: InfoWindow(
-          title: '🚌 Bus ${busState.busNumber} (${busState.status.label})',
-          snippet: busState.status == BusJourneyStatus.stoppedAtStop
-              ? 'Stopped at ${busState.currentStopName} • 0 km/h'
-              : 'Speed: ${busState.speed.toStringAsFixed(0)} km/h • Next: ${busState.nextStopName}',
-        ),
-        zIndexInt: 10,
-      ),
-    );
-
-    // 2. All 8 Stop Markers
-    for (int i = 0; i < allStops.length; i++) {
-      final stop = allStops[i];
-      final isSelected = stop.id == busState.selectedStopId;
-      final isCurrent = i == busState.currentStopIndex;
-      final isNext = i == busState.nextStopIndex;
-      final isPassed = i < busState.currentStopIndex;
-
-      double hue;
-      String snippet;
-
-      if (isSelected) {
-        hue = BitmapDescriptor.hueRose;
-        snippet = '⭐ YOUR DESTINATION (ETA: ${busState.etaToSelectedStop ?? busState.etaMinutes} min)';
-      } else if (isCurrent && busState.status == BusJourneyStatus.stoppedAtStop) {
-        hue = BitmapDescriptor.hueYellow;
-        snippet = '🟡 Bus is currently stopped here (Departing in ${busState.dwellTimeRemainingSeconds}s)';
-      } else if (isNext) {
-        hue = BitmapDescriptor.hueBlue;
-        snippet = '🔵 Next stop (${busState.distanceToNextStop.toStringAsFixed(1)} km away)';
-      } else if (isPassed) {
-        hue = BitmapDescriptor.hueGreen;
-        snippet = '✓ Passed';
-      } else {
-        hue = BitmapDescriptor.hueOrange;
-        snippet = 'Upcoming stop';
-      }
-
-      markers.add(
-        Marker(
-          markerId: MarkerId('stop_${stop.id}'),
-          position: LatLng(stop.lat, stop.lng),
-          icon: BitmapDescriptor.defaultMarkerWithHue(hue),
-          infoWindow: InfoWindow(
-            title: '${i + 1}. ${stop.name}',
-            snippet: snippet,
-            onTap: () {
-              repo.selectPassengerStop(widget.busId, stop.id);
-            },
-          ),
-          onTap: () {
-            repo.selectPassengerStop(widget.busId, stop.id);
-          },
-          zIndexInt: isSelected ? 9 : (isCurrent ? 8 : 5),
-        ),
-      );
-    }
-
-    // 3. User Marker logic removed in favor of myLocationEnabled
-
-    return GoogleMap(
-      initialCameraPosition: CameraPosition(
-        target: currentPos,
-        zoom: 14.5,
-        bearing: busState.heading,
-        tilt: 30.0,
-      ),
-      onMapCreated: (ctrl) {
-        _mapController = ctrl;
-      },
-      markers: markers,
-      polylines: polylines,
-      myLocationEnabled: true,
-      myLocationButtonEnabled: false,
-      zoomControlsEnabled: false,
-      mapToolbarEnabled: false,
-      compassEnabled: true,
-      onCameraMoveStarted: () {
-        if (_followBus) {
-          setState(() => _followBus = false);
-        }
-      },
-    );
-  }
-
   // ─── Top Live Status Header ─────────────────────────────────────────────────
   Widget _buildTopStatusBar(BusLiveState state) {
     return Container(
@@ -497,7 +394,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
       ),
       child: Row(
         children: [
-          // Status indicator dot / icon
           Container(
             width: 12,
             height: 12,
@@ -513,7 +409,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
             ),
           ),
           const SizedBox(width: 12),
-          // Dynamic Message
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -572,7 +467,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
               ],
             ),
           ),
-          // Speed badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             decoration: BoxDecoration(
@@ -595,7 +489,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
     );
   }
 
-  // ─── "Is My Bus Coming?" Live Banner (Requirement 18) ──────────────────────
+  // ─── "Is My Bus Coming?" Live Banner ───────────────────────────────────────
   Widget _buildIsMyBusComingBanner(BusLiveState state) {
     final boardingStop = state.selectedStopName ??
         (state.status == BusJourneyStatus.approachingStop
@@ -701,7 +595,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
     );
   }
 
-  // ─── Passenger Destination Stop ("Get Down" Experience) ─────────────────────
+  // ─── Passenger Destination Stop ─────────────────────────────────────────────
   Widget _buildPassengerSelectedStopBanner(
       BusLiveState state, LiveBusTrackingRepository repo) {
     final stopName = state.selectedStopName ?? 'Selected Stop';
@@ -774,13 +668,12 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
   }
 
   // ─── Floating Map Controls ──────────────────────────────────────────────────
-  Widget _buildFloatingMapControls(LatLng busPos, double heading, LocationState locationState) {
+  Widget _buildFloatingMapControls(LatLng busPos, double heading) {
     return Positioned(
       top: 170,
       right: 16,
       child: Column(
         children: [
-          // Follow Bus Toggle
           _buildMapBtn(
             icon: _followBus
                 ? Icons.directions_bus_filled_rounded
@@ -793,14 +686,14 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
             },
           ),
           const SizedBox(height: 8),
-          // Recenter to User Location
           _buildMapBtn(
             icon: Icons.my_location_rounded,
             color: const Color(0xFF475569),
             label: 'Recenter',
             onTap: () {
               setState(() => _followBus = false);
-              final userPos = locationState.currentPosition;
+              // Read location without watching — avoids rebuild subscription
+              final userPos = ref.read(locationProvider).currentPosition;
               if (userPos != null && _mapController != null) {
                 _mapController!.animateCamera(
                   CameraUpdate.newCameraPosition(
@@ -811,7 +704,7 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                     ),
                   ),
                 );
-              } else if (!locationState.isLocationEnabled) {
+              } else if (!ref.read(locationProvider).isLocationEnabled) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Location permission is required to show your position.')),
                 );
@@ -819,7 +712,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
             },
           ),
           const SizedBox(height: 8),
-          // Fit entire route
           _buildMapBtn(
             icon: Icons.route_rounded,
             color: const Color(0xFF475569),
@@ -830,7 +722,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
             },
           ),
           const SizedBox(height: 8),
-          // Zoom in
           _buildMapBtn(
             icon: Icons.add_rounded,
             color: const Color(0xFF475569),
@@ -841,7 +732,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
             },
           ),
           const SizedBox(height: 8),
-          // Zoom out
           _buildMapBtn(
             icon: Icons.remove_rounded,
             color: const Color(0xFF475569),
@@ -925,7 +815,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
               ],
             ),
             const SizedBox(height: 8),
-            // Play / Pause
             Row(
               children: [
                 Expanded(
@@ -956,7 +845,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
               ],
             ),
             const SizedBox(height: 6),
-            // Skip to next stop
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -972,7 +860,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
               ),
             ),
             const SizedBox(height: 6),
-            // Reset Journey
             SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
@@ -1140,7 +1027,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
             controller: scrollController,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             children: [
-              // Handle
               Center(
                 child: Container(
                   width: 44,
@@ -1153,7 +1039,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
               ),
               const SizedBox(height: 16),
 
-              // Header: Bus Name, Route, Live Tag
               Row(
                 children: [
                   Container(
@@ -1209,7 +1094,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                       ],
                     ),
                   ),
-                  // ETA Chip
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.end,
                     children: [
@@ -1233,10 +1117,8 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
 
               const SizedBox(height: 18),
 
-              // Current Stop & Next Stop Cards
               Row(
                 children: [
-                  // Current Stop
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.all(12),
@@ -1286,7 +1168,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                     ),
                   ),
                   const SizedBox(width: 10),
-                  // Next Stop
                   Expanded(
                     child: Container(
                       padding: const EdgeInsets.all(12),
@@ -1335,7 +1216,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
 
               const SizedBox(height: 18),
 
-              // Journey Progress Bar
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1369,7 +1249,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
 
               const SizedBox(height: 20),
 
-              // Interactive Route Stops Timeline (all 8 stops)
               const Text(
                 'Route Stops (Tap to select your stop)',
                 style: TextStyle(
@@ -1396,7 +1275,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Left indicator circle & line
                           Column(
                             children: [
                               Container(
@@ -1448,7 +1326,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                             ],
                           ),
                           const SizedBox(width: 14),
-                          // Stop name & status
                           Expanded(
                             child: Padding(
                               padding: const EdgeInsets.only(top: 2),
@@ -1506,7 +1383,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
                                         ),
                                     ],
                                   ),
-                                  // Badge
                                   Container(
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 8, vertical: 3),
@@ -1551,7 +1427,6 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
 
               const SizedBox(height: 20),
 
-              // Metrics Row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
@@ -1617,6 +1492,279 @@ class _LiveTrackingScreenState extends ConsumerState<LiveTrackingScreen>
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Isolated Google Map Widget ───────────────────────────────────────────────
+//
+// This widget owns its own state for markers and polylines.
+// It only rebuilds the GoogleMap when markers actually change.
+// The parent passes BusLiveState; this widget diffs it internally.
+
+class _LiveMapWidget extends StatefulWidget {
+  final String busId;
+  final BusLiveState busState;
+  final LatLng initialPos;
+  final void Function(GoogleMapController) onMapReady;
+  final VoidCallback onUserPan;
+  final LiveBusTrackingRepository repo;
+
+  const _LiveMapWidget({
+    super.key,
+    required this.busId,
+    required this.busState,
+    required this.initialPos,
+    required this.onMapReady,
+    required this.onUserPan,
+    required this.repo,
+  });
+
+  @override
+  _LiveMapWidgetState createState() => _LiveMapWidgetState();
+}
+
+class _LiveMapWidgetState extends State<_LiveMapWidget> {
+  Set<Marker> _markers = {};
+  Set<Polyline> _polylines = {};
+
+  // Track last values to avoid unnecessary rebuilds
+  LatLng _lastBusPos = const LatLng(0, 0);
+  double _lastHeading = 0;
+  int _lastRoutePointIndex = -1;
+  String? _lastSelectedStopId;
+  BusJourneyStatus? _lastStatus;
+
+  // Precomputed stop marker positions (constant — never changes)
+  static final List<LatLng> _stopPositions = MockLiveBusTrackingRepository
+      .ukkadamPollachiStops
+      .map((s) => LatLng(s.lat, s.lng))
+      .toList(growable: false);
+
+  @override
+  void initState() {
+    super.initState();
+    _buildInitialPolylines();
+    _rebuildMarkers(widget.busState, widget.initialPos);
+  }
+
+  @override
+  void didUpdateWidget(_LiveMapWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    final state = widget.busState;
+    final newPos = LatLng(state.latitude, state.longitude);
+
+    // Determine what changed
+    final posChanged = (newPos.latitude - _lastBusPos.latitude).abs() > 0.000001 ||
+        (newPos.longitude - _lastBusPos.longitude).abs() > 0.000001;
+    final headingChanged = (state.heading - _lastHeading).abs() > 1.0;
+    final routePointChanged = state.currentRoutePointIndex != _lastRoutePointIndex;
+    final selectedStopChanged = state.selectedStopId != _lastSelectedStopId;
+    final statusChanged = state.status != _lastStatus;
+
+    // Only rebuild markers when something map-relevant changed
+    if (posChanged || headingChanged || selectedStopChanged || statusChanged) {
+      _rebuildMarkers(state, widget.initialPos);
+    }
+
+    // Only rebuild polylines when the route progress segment changes
+    if (routePointChanged) {
+      _rebuildPolylines(state, widget.initialPos);
+    }
+  }
+
+  // Called from parent's animation listener — no setState on parent
+  void updateAnimatedPosition(LatLng animatedPos) {
+    if (!mounted) return;
+    // Only update if the animated position meaningfully differs
+    final latDiff = (animatedPos.latitude - _lastBusPos.latitude).abs();
+    final lngDiff = (animatedPos.longitude - _lastBusPos.longitude).abs();
+    if (latDiff < 0.000001 && lngDiff < 0.000001) return;
+
+    setState(() {
+      _updateBusMarkerPosition(animatedPos);
+    });
+  }
+
+  void _updateBusMarkerPosition(LatLng pos) {
+    // Surgically replace only the bus marker, preserving all stop markers
+    final busMarkerId = MarkerId('bus_${widget.busId}');
+    final updatedMarkers = _markers.map((m) {
+      if (m.markerId == busMarkerId) {
+        return m.copyWith(positionParam: pos);
+      }
+      return m;
+    }).toSet();
+    _markers = updatedMarkers;
+    _lastBusPos = pos;
+  }
+
+  void _buildInitialPolylines() {
+    // Build polylines once; they get updated when route progress changes
+    _polylines = {
+      Polyline(
+        polylineId: const PolylineId('completed_route'),
+        points: const [LatLng(10.9902, 76.9607)], // placeholder
+        color: const Color(0xFF10B981),
+        width: 6,
+        startCap: Cap.roundCap,
+        endCap: Cap.roundCap,
+        jointType: JointType.round,
+      ),
+      Polyline(
+        polylineId: const PolylineId('remaining_route'),
+        points: _staticPolylinePoints,
+        color: const Color(0xFF6366F1),
+        width: 6,
+        startCap: Cap.roundCap,
+        endCap: Cap.roundCap,
+        jointType: JointType.round,
+      ),
+    };
+  }
+
+  void _rebuildPolylines(BusLiveState state, LatLng currentPos) {
+    final allPoly = _staticPolylinePoints;
+    final splitIdx =
+        state.currentRoutePointIndex.clamp(0, allPoly.length - 1);
+
+    final completedPoints = <LatLng>[];
+    for (int i = 0; i <= splitIdx; i++) {
+      completedPoints.add(allPoly[i]);
+    }
+    completedPoints.add(currentPos);
+
+    final remainingPoints = <LatLng>[currentPos];
+    for (int i = splitIdx + 1; i < allPoly.length; i++) {
+      remainingPoints.add(allPoly[i]);
+    }
+
+    setState(() {
+      _polylines = {
+        Polyline(
+          polylineId: const PolylineId('completed_route'),
+          points: completedPoints,
+          color: const Color(0xFF10B981),
+          width: 6,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
+        ),
+        Polyline(
+          polylineId: const PolylineId('remaining_route'),
+          points: remainingPoints,
+          color: const Color(0xFF6366F1),
+          width: 6,
+          startCap: Cap.roundCap,
+          endCap: Cap.roundCap,
+          jointType: JointType.round,
+        ),
+      };
+      _lastRoutePointIndex = state.currentRoutePointIndex;
+    });
+  }
+
+  void _rebuildMarkers(BusLiveState state, LatLng currentPos) {
+    final allStops = MockLiveBusTrackingRepository.ukkadamPollachiStops;
+    final newMarkers = <Marker>{};
+
+    // Bus marker
+    newMarkers.add(
+      Marker(
+        markerId: MarkerId('bus_${widget.busId}'),
+        position: currentPos,
+        rotation: state.heading,
+        anchor: const Offset(0.5, 0.5),
+        icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
+        infoWindow: InfoWindow(
+          title: '🚌 Bus ${state.busNumber} (${state.status.label})',
+          snippet: state.status == BusJourneyStatus.stoppedAtStop
+              ? 'Stopped at ${state.currentStopName} • 0 km/h'
+              : 'Speed: ${state.speed.toStringAsFixed(0)} km/h • Next: ${state.nextStopName}',
+        ),
+        zIndexInt: 10,
+      ),
+    );
+
+    // Stop markers — use precomputed positions
+    for (int i = 0; i < allStops.length; i++) {
+      final stop = allStops[i];
+      final isSelected = stop.id == state.selectedStopId;
+      final isCurrent = i == state.currentStopIndex;
+      final isNext = i == state.nextStopIndex;
+      final isPassed = i < state.currentStopIndex;
+
+      double hue;
+      String snippet;
+
+      if (isSelected) {
+        hue = BitmapDescriptor.hueRose;
+        snippet = '⭐ YOUR DESTINATION (ETA: ${state.etaToSelectedStop ?? state.etaMinutes} min)';
+      } else if (isCurrent && state.status == BusJourneyStatus.stoppedAtStop) {
+        hue = BitmapDescriptor.hueYellow;
+        snippet = '🟡 Bus is currently stopped here (Departing in ${state.dwellTimeRemainingSeconds}s)';
+      } else if (isNext) {
+        hue = BitmapDescriptor.hueBlue;
+        snippet = '🔵 Next stop (${state.distanceToNextStop.toStringAsFixed(1)} km away)';
+      } else if (isPassed) {
+        hue = BitmapDescriptor.hueGreen;
+        snippet = '✓ Passed';
+      } else {
+        hue = BitmapDescriptor.hueOrange;
+        snippet = 'Upcoming stop';
+      }
+
+      newMarkers.add(
+        Marker(
+          markerId: MarkerId('stop_${stop.id}'),
+          position: _stopPositions[i],
+          icon: BitmapDescriptor.defaultMarkerWithHue(hue),
+          infoWindow: InfoWindow(
+            title: '${i + 1}. ${stop.name}',
+            snippet: snippet,
+            onTap: () {
+              widget.repo.selectPassengerStop(widget.busId, stop.id);
+            },
+          ),
+          onTap: () {
+            widget.repo.selectPassengerStop(widget.busId, stop.id);
+          },
+          zIndexInt: isSelected ? 9 : (isCurrent ? 8 : 5),
+        ),
+      );
+    }
+
+    setState(() {
+      _markers = newMarkers;
+      _lastBusPos = currentPos;
+      _lastHeading = state.heading;
+      _lastSelectedStopId = state.selectedStopId;
+      _lastStatus = state.status;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.busState;
+    return GoogleMap(
+      initialCameraPosition: CameraPosition(
+        target: widget.initialPos,
+        zoom: 14.5,
+        bearing: state.heading,
+        tilt: 30.0,
+      ),
+      onMapCreated: (ctrl) {
+        widget.onMapReady(ctrl);
+      },
+      markers: _markers,
+      polylines: _polylines,
+      myLocationEnabled: true,
+      myLocationButtonEnabled: false,
+      zoomControlsEnabled: false,
+      mapToolbarEnabled: false,
+      compassEnabled: true,
+      onCameraMoveStarted: widget.onUserPan,
     );
   }
 }
